@@ -128,11 +128,11 @@ class BicycleModelDynamic:
         if ("v_transition_min" in model_parameters):
             self.v_transition_min = model_parameters["v_transition_min"]
         else:
-            self.v_transition_min = 3
+            self.v_transition_min = 3.0
         if ("v_transition_max" in model_parameters):
             self.v_transition_max = model_parameters["v_transition_max"]
         else:
-            self.v_transition_max = 3
+            self.v_transition_max = 5.0
 
 
         # Construct a dictionary of the model parameters are needed for the equations of motion
@@ -309,16 +309,17 @@ class BicycleModelDynamic:
         else:
             # Compute the state dot
             F_on_m = F / mp["m"]
+            tan_delta = np.tan(s[6])
+            delta_dot_sec2_delta_vx_plus_tan_delta_v_dot = a[1]*(1.0+tan_delta*tan_delta)*s[3] + tan_delta*F_on_m
             s_dot_kinematic = np.array([
               s[3] * np.cos(s[2]) - s[4] * np.sin(s[2]) ,
               s[3] * np.sin(s[2]) + s[4] * np.cos(s[2]) ,
               s[5] ,
               F_on_m ,
-              ( a[1]*s[3]/(np.cos(s[6])**2) + np.tan(s[6])*F_on_m ) * mp["Lr"] / (mp["Lf"]+mp["Lr"]),
-              ( a[1]*s[3]/(np.cos(s[6])**2) + np.tan(s[6])*F_on_m ) * 1.0      / (mp["Lf"]+mp["Lr"]),
+              ( delta_dot_sec2_delta_vx_plus_tan_delta_v_dot ) * mp["Lr"] / (mp["Lf"]+mp["Lr"]),
+              ( delta_dot_sec2_delta_vx_plus_tan_delta_v_dot ) * 1.0      / (mp["Lf"]+mp["Lr"]),
               a[1] ,
               ], dtype=np.float32)
-            #print(np.tan(s[6]))
 
         # Compute the dynamic model "state dot" (only if necessary)
         if (s[3] <= vt_min):
@@ -353,13 +354,14 @@ class BicycleModelDynamic:
               ], dtype=np.float32)
 
         # Compute the "state dot" that blends the kinemaitc and dynamic models
-        if (s[3] >= vt_max):
+        abs_vx = abs()s[3])
+        if (abs_vx >= vt_max):
             s_dot = np.array(s_dot_dynamic, dtype=np.float32)
-        elif (s[3] <= vt_min):
+        elif (abs_vx <= vt_min):
             s_dot = np.array(s_dot_kinematic, dtype=np.float32)
         else:
             # Compute the blending factor
-            blend_factor = max( 0.0, min( (s[3]-vt_min)/(vt_max-vt_min) , 1.0))
+            blend_factor = max( 0.0, min( (abs_vx-vt_min)/(vt_max-vt_min) , 1.0))
             # Compute the blended "state dot"
             s_dot = blend_factor * s_dot_dynamic + (1.0-blend_factor) * s_dot_kinematic
 
