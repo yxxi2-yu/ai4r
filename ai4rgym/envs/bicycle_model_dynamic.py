@@ -354,7 +354,7 @@ class BicycleModelDynamic:
               ], dtype=np.float32)
 
         # Compute the "state dot" that blends the kinemaitc and dynamic models
-        abs_vx = abs()s[3])
+        abs_vx = abs(s[3])
         if (abs_vx >= vt_max):
             s_dot = np.array(s_dot_dynamic, dtype=np.float32)
         elif (abs_vx <= vt_min):
