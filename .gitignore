@@ -1,0 +1,17 @@
+# Ignore venv diretories
+*venv*/
+
+# Ignore .egg-info directory
+*.egg-info/
+
+# Ignore pdfs in the saved figures folder
+examples/saved_figures/*.pdf
+
+# Ignore any __pycache__ directories
+**__pycache__**
+
+# Ignore typical unwanted files
+.DS_Store
+
+# Ignore swp files
+*.swp
