@@ -92,7 +92,7 @@ class AutonomousDrivingEnv(gym.Env):
     """
 
     metadata = {
-        "render_modes": ["matplotlip"],
+        "render_modes": ["matplotlib"],
         "integration_methods" : ["euler", "huen", "midpoint", "rk4", "rk45"],
     }
 
@@ -592,7 +592,7 @@ class AutonomousDrivingEnv(gym.Env):
             self.axis.set_ylim(ymin=py-0.5*y_height, ymax=py+0.5*y_height)
 
     #def render(self):
-    #    if self.render_mode == "matplotlip":
+    #    if self.render_mode == "matplotlib":
     #        return self._render_frame()
 
 
