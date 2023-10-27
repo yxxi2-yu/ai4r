@@ -86,8 +86,8 @@ numerical_integration_parameters = {
 py_init_min = -1.0
 py_init_max =  1.0
 
-v_init_min_in_kmh = 25.0
-v_init_max_in_kmh = 35.0
+v_init_min_in_kmh = 55.0
+v_init_max_in_kmh = 65.0
 
 initial_state_bounds = {
     "px_init_min" : 0.0,
@@ -156,6 +156,9 @@ Ts_sim = 0.05
 # Specify the integration method to simulate
 integration_method = "rk4"
 
+# Specify the "progress queries" to look ahead 50 meters
+progress_queries = np.array([100.0], dtype=np.float32)
+
 # Initialise array for storing (px,py) trajectory:
 px_traj    = np.empty([N_sim+1,], dtype=np.float32)
 py_traj    = np.empty([N_sim+1,], dtype=np.float32)
@@ -163,6 +166,9 @@ py_traj    = np.empty([N_sim+1,], dtype=np.float32)
 # Set the integration method and Ts of the gymnasium
 env.unwrapped.set_integration_method(integration_method)
 env.unwrapped.set_integration_Ts(Ts_sim)
+
+# Set the progress queries
+env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
 
 # Reset the gymnasium
 # > which also returns the first observation
@@ -193,13 +199,26 @@ for i_step in range(N_sim):
 
     ## --------------------
     #  START OF POLICY CODE
+
+    # Get the "info_dict" observation of the curvature at the closest point on the road
+    curvature_at_closest = info_dict["curvature_at_closest_p"]
+    # Get the "info_dict" observation of the curvature at the progress queries to the line
+    look_ahead_curvature = info_dict["curvatures"][0]
     
     if (run_terminated):
         # Zero speed reference after reaching the end of the road
         speed_ref = 0.0
     else:
-        # Constant speed reference while on the road
-        speed_ref = 30.0/3.6
+        # Speed reference relative to look-ahead curvature
+        if np.isnan(look_ahead_curvature):
+            speed_ref = 20.0/3.6
+        else:
+            curvature_for_speed_ref = abs(look_ahead_curvature)
+            if ( abs(curvature_at_closest) >= abs(look_ahead_curvature) ):
+                curvature_for_speed_ref = abs(curvature_at_closest)
+
+            speed_ref = 60.0/3.6 - curvature_for_speed_ref * (50.0) * (40/3.6)
+            speed_ref = max(speed_ref,20.0/3.6)
 
     # Get the "info_dict" observation of the distance to the line
     closest_distance = info_dict["closest_distance"]
@@ -214,8 +233,13 @@ for i_step in range(N_sim):
     # Clip the drive command action to be in the range [-100,100] percent
     drive_command_clipped = max(-100.0, min(drive_command_raw, 100.0))
 
+    # Adjust the steering gain based on the speed
+    #kp_steering = 2.0
+    kp_steering = -(2.0 / (40.0/3.6)) * speed + 0.5 + ((2.0 / (40.0/3.6)) * (60.0/3.6))
+    kp_steering = max( 0.5 , min( 4.0, kp_steering ) )
+
     # Compute the steering angle request action
-    delta_request = 4.0*(np.pi/180.0) * closest_distance * -side_of_the_road_line
+    delta_request = kp_steering*(np.pi/180.0) * closest_distance * (-side_of_the_road_line)
 
     # Construct the action dictionary expected by the gymnasium
     action = {

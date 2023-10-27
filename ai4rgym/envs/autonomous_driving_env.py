@@ -321,6 +321,8 @@ class AutonomousDrivingEnv(gym.Env):
                   The total length of road from the start of the road to the closest point.
                 - "road_angle_at_closest_p" : float
                   The angle of the road at the closest point (relative to the world-frame x-axis).
+                - "curvature_at_closest_p" : float
+                  The curvature of the road at the closest point.
                 - "closest_element_idx" : int
                   The index of the road element that is closest to the car.
                 - "progress_queries" : numpy array, 1-dimensional
@@ -331,6 +333,9 @@ class AutonomousDrivingEnv(gym.Env):
                   A 2-dimensional numpy array with: size = number of query points -by- 2.
                 - "road_angles_relative_to_body_frame" : numpy array, 1-dimensional
                   Angle of the road, relative to the body frame, at each of the progress query points.
+                  A 1-dimensional numpy array with: size = number of query points.
+                - "curvatures" : numpy array, 1-dimensional
+                  Curvature of the road at each of the progress query points.
                   A 1-dimensional numpy array with: size = number of query points.
 
                 Units: all length in meters, all angles in radians.

@@ -490,7 +490,7 @@ class Road:
     def convert_progression_to_coordinates(self, progression_queries):
         """
         Computes the world-frame coordinates of points along the road where the length of
-        whole road (i.e., progression from the start of the road) equal to the query value.
+        whole road (i.e., progression from the start of the road) equals to the query value(s).
 
         Parameters
         ----------
@@ -568,6 +568,58 @@ class Road:
 
         # Return the coordinates and angles
         return p_coords, p_angles
+
+
+
+    def convert_progression_to_curvature(self, progression_queries):
+        """
+        Retrieves the curvature at points along the road where the length of
+        whole road (i.e., progression from the start of the road) equals to the query value(s).
+
+        Parameters
+        ----------
+            progressing query : numpy array
+                Value of road progression for which the world-frame coordinates. should be computed (units: m).
+
+        Returns
+        -------
+            p_curvatures : numpy array
+                The curvature of the road for each progression query,
+                1-dimensional array with length = number of queries,
+                (units: 1/m).
+        """
+        # Get the number of progression query values
+        num_queries = len(progression_queries)
+
+        # Initialise arrays for the results to be returned
+        p_curvatures = np.zeros((num_queries,), dtype=np.float32)
+
+        # Compute the index of the road element for each progression value
+        road_idxs = np.searchsorted( self.__l_total_at_end , progression_queries, side="left", sorter=None)
+
+        # Iterate through the progression values
+        for i_prog in np.arange(0,num_queries):
+            # Get the value of progression
+            this_prog = progression_queries[i_prog]
+
+            # Get the road element index
+            this_road_idx = road_idxs[i_prog]
+
+            # Check if the progression is beyond the end of the road
+            if (this_road_idx == len(self.__l_total_at_end) ):
+                p_curvatures[i_prog] = np.nan
+
+            # Also check if the progression is before the start of the road
+            elif (this_prog < 0):
+                p_curvatures[i_prog] = np.nan
+
+            # Otherwise:
+            else:
+                # Extract the curvature
+                p_curvatures[i_prog] = self.__c[this_road_idx]
+
+        # Return the coordinates and angles
+        return p_curvatures
 
 
 
@@ -672,6 +724,8 @@ class Road:
                   The total length of road from the start of the road to the closest point.
                 - "road_angle_at_closest_p" : float
                   The angle of the road at the closest point (relative to the world-frame x-axis).
+                - "curvature_at_closest_p" : float
+                  The curvature of the road at the closest point.
                 - "closest_element_idx" : int
                   The index of the road element that is closest to the car.
                 - "progress_queries" : numpy array, 1-dimensional
@@ -683,11 +737,17 @@ class Road:
                 - "road_angles_relative_to_body_frame" : numpy array, 1-dimensional
                   Angle of the road, relative to the body frame, at each of the progress query points.
                   A 1-dimensional numpy array with: size = number of query points.
+                - "curvatures" : numpy array, 1-dimensional
+                  Curvature of the road at each of the progress query points.
+                  A 1-dimensional numpy array with: size = number of query points.
 
                 Units: all length in meters, all angles in radians.
         """
         # Compute the closest point on the road
         px_closest, py_closest, closest_distance, side_of_the_road_line, progress_at_closest_p, road_angle_at_closest_p, closest_element_idx = self.find_closest_point_to(px=px, py=py)
+
+        # Get the curvature of the closest element
+        curvature_at_closest_p = self.__c[closest_element_idx]
 
         # Shift the progression queries by the progression of the current point
         prog_queries_from_start = progress_at_closest_p + progress_queries
@@ -701,6 +761,9 @@ class Road:
         # Shift the angles to be relative to the body frame of the given pose
         p_angles_relative_to_body_frame = p_angles - theta
 
+        # Get the curvature at the progression queries
+        p_curvatures = self.convert_progression_to_curvature(prog_queries_from_start)
+
         # Create an info dictionary with all the extra details
         info_dict = {
             "px" : px,
@@ -711,10 +774,12 @@ class Road:
             "side_of_the_road_line" : side_of_the_road_line,
             "progress_at_closest_p" : progress_at_closest_p,
             "road_angle_at_closest_p" : road_angle_at_closest_p,
+            "curvature_at_closest_p" : curvature_at_closest_p,
             "closest_element_idx" : closest_element_idx,
             "progress_queries" : progress_queries,
             "road_points_in_body_frame" : p_coords_in_body_frame,
             "road_angles_relative_to_body_frame" : p_angles_relative_to_body_frame,
+            "curvatures" : p_curvatures,
         }
 
         # Return the pixel coordinates and the info dictionary
