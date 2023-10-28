@@ -407,8 +407,8 @@ class Road:
             closest_distance = distance_to_end
             closest_element_idx = idx_end
             # Fill in the "easy" details
-            px_closest = self.__start_points[idx_end,0]
-            py_closest = self.__start_points[idx_end,1]
+            px_closest = self.__end_points[idx_end,0]
+            py_closest = self.__end_points[idx_end,1]
             progress_at_closest_p = self.__l_total_at_end[idx_end]
             road_angle_at_closest_p = self.__end_angles[idx_end]
             # Compute the side of the road
