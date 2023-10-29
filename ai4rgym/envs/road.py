@@ -429,6 +429,181 @@ class Road:
 
 
 
+        # Check all other candidates
+        for idx in idxs_to_check:
+            if self.__isStraight[idx]:
+
+                # Compute the closest distance to this road element
+                this_vector_to_start = p_query[:,0] - self.__start_points[idx,:]
+                this_perp_direction = np.array([np.cos(self.__start_angles[idx]+0.5*np.pi),np.sin(self.__start_angles[idx]+0.5*np.pi)])
+                this_inner_product_perp = np.inner( this_vector_to_start , this_perp_direction )
+                this_distance = abs( this_inner_product_perp )
+                # Continue processing if this is the closest so far
+                if (this_distance < closest_distance):
+                    # Update the closest distance and idx
+                    closest_distance = this_distance
+                    closest_element_idx = idx
+                    # Compute which side of the line it is on
+                    side_of_the_road_line = (1.0) if (this_inner_product_perp >= 0) else  (-1.0)
+                    # Compute the point to return
+                    distance_from_start = np.inner( this_vector_to_start , self.__end_hyperplane_A[idx,:] )
+                    px_closest = self.__start_points[idx,0] + distance_from_start * np.cos(self.__start_angles[idx])
+                    py_closest = self.__start_points[idx,1] + distance_from_start * np.sin(self.__start_angles[idx])
+                    # Compute the progress of the closest point
+                    progress_at_closest_p = self.__l_total_at_end[idx] - self.__l[idx] + distance_from_start
+                    # Set the road angle at this closest point
+                    road_angle_at_closest_p = self.__start_angles[idx]
+            else:
+                # Compute the closest distance to this road element
+                this_vector_to_arc_center = p_query[:,0] - self.__arc_centers[idx,:]
+                this_dist_to_arc_center = np.linalg.norm(this_vector_to_arc_center)
+                this_dist_to_arc = this_dist_to_arc_center - (1/abs(self.__c[idx]))
+                this_distance = abs( this_dist_to_arc )
+                # Continue processing if this is the closest so far
+                if (this_distance < closest_distance):
+                    # Update the closest distance and idx
+                    closest_distance = this_distance
+                    closest_element_idx = idx
+                    # Compute which side of the line it is on
+                    if (np.sign(self.__c[idx]) > 0):
+                        side_of_the_road_line = (1.0) if (this_dist_to_arc < 0) else  (-1.0)
+                    else:
+                        side_of_the_road_line = (1.0) if (this_dist_to_arc > 0) else  (-1.0)
+                    # Compute the point to return
+                    p_closest = self.__arc_centers[idx,:] + this_vector_to_arc_center * 1/(this_dist_to_arc_center*abs(self.__c[idx]))
+                    px_closest = p_closest[0]
+                    py_closest = p_closest[1]
+                    # Compute the chord length from the start to the closest point
+                    this_chord_vector_start_to_closest_p = p_closest - self.__start_points[idx,:]
+                    this_chord_length_start_to_closest_p = np.linalg.norm(this_chord_vector_start_to_closest_p)
+                    # Compute the angle from the start to the closest p
+                    this_angle_start_to_closest_p = 2.0 * np.arcsin(0.5*this_chord_length_start_to_closest_p*abs(self.__c[idx]))
+                    # Compute the progress of the closest point
+                    progress_at_closest_p = self.__l_total_at_end[idx] - self.__l[idx] + (this_angle_start_to_closest_p/abs(self.__c[idx]))
+                    # Set the road angle at this closest point
+                    if (np.sign(self.__c[idx]) > 0):
+                        road_angle_at_closest_p = self.__start_angles[idx] + this_angle_start_to_closest_p
+                    else:
+                        road_angle_at_closest_p = self.__start_angles[idx] - this_angle_start_to_closest_p
+
+        # Return the results
+        return px_closest, py_closest, closest_distance, side_of_the_road_line, progress_at_closest_p, road_angle_at_closest_p, closest_element_idx
+
+
+
+    def zzz_old_find_closest_point_to(self, px, py):
+        """
+        For a given query point (i.e., (px,py)), this function computes the
+        point on the road that is closest to that query point. Euclidean
+        distance is the metric measuring and comparing distances.
+
+        Parameters
+        ----------
+            px : float
+                World frame x-axis coordinate of the query point (units: m).
+            py : float
+                World frame y-axis coordinate of the query point (units: m).
+
+        Returns
+        -------
+            px_closest : float
+                World frame x-axis coordinate of the closest point on the road (units: m).
+            py_closest : float
+                World frame y-axis coordinate of the closest point on the road (units: m).
+            closest_distance : float
+                Eucliedean distance between the query point and its closest point on the road (units: m).
+            side_of_the_road_line : float
+                The side of the road that the query point lies on (units: -1:=left-hand-side, 1:=right-hand-side)
+            progress_at_closest_p : float
+                The length of the whole road from its start until the closest point (units: m).
+            road_angle_at_closest_p : float
+                The tangent angles of the road at the closest point (units: radians).
+            closest_element_idx : float
+                The index of the road element that contains the closest point (units: index).
+        """
+
+        # Put the query point into a column vector
+        p_query = np.array([[px],[py]],dtype=np.float32)
+        # Compute the logic check for the start and end hyperplane
+        start_check = np.less_equal( np.matmul(self.__start_hyperplane_A, p_query)[:,0] , self.__start_hyperplane_b )
+        end_check   = np.less_equal( np.matmul(self.__end_hyperplane_A, p_query)[:,0]   , self.__end_hyperplane_b   )
+        # Compute the combine check
+        check = np.logical_and(start_check, end_check)
+        # Get the indicies for the road elements to check
+        idxs_to_check = np.where(check)[0]
+
+        # Initialize the "closest distance" variable as this is used to keep
+        # track of which point is the closest
+        closest_distance = 10e10
+
+        # Initialize the other variables that are to be returned
+        px_closest = 0.0
+        py_closest = 0.0
+        side_of_the_road_line = 0.0
+        progress_at_closest_p = 0.0
+        road_angle_at_closest_p = 0.0
+        closest_element_idx = 0
+
+        # Check the start of the road
+        idx_start = 0
+        distance_to_start = np.sqrt((px-self.__start_points[idx_start,0])**2 + (py-self.__start_points[idx_start,1])**2)
+        if (distance_to_start < closest_distance):
+            # Update the closest distance and idx
+            closest_distance = distance_to_start
+            closest_element_idx = idx_start
+            # Fill in the "easy" details
+            px_closest = self.__start_points[idx_start,0]
+            py_closest = self.__start_points[idx_start,1]
+            progress_at_closest_p = 0.0
+            road_angle_at_closest_p = self.__start_angles[idx_start]
+            # Compute the side of the road
+            if self.__isStraight[idx_start]:
+                this_vector_to_start = p_query[:,0] - self.__start_points[idx_start,:]
+                this_perp_direction = np.array([np.cos(self.__start_angles[idx_start]+0.5*np.pi),np.sin(self.__start_angles[idx_start]+0.5*np.pi)])
+                this_inner_product_perp = np.inner( this_vector_to_start , this_perp_direction )
+                side_of_the_road_line = (1.0) if (this_inner_product_perp >= 0) else  (-1.0)
+            else:
+                this_vector_to_arc_center = p_query[:,0] - self.__arc_centers[idx_start,:]
+                this_dist_to_arc_center = np.linalg.norm(this_vector_to_arc_center)
+                this_dist_to_arc = this_dist_to_arc_center - (1/abs(self.__c[idx_start]))
+                # Compute which side of the line it is on
+                if (np.sign(self.__c[idx_start]) > 0):
+                    side_of_the_road_line = (1.0) if (this_dist_to_arc < 0) else  (-1.0)
+                else:
+                    side_of_the_road_line = (1.0) if (this_dist_to_arc > 0) else  (-1.0)
+
+
+
+        # Check the end of the road
+        idx_end = self.__c.shape[0]-1
+        distance_to_end = np.sqrt((px-self.__end_points[idx_end,0])**2 + (py-self.__end_points[idx_end,1])**2)
+        if (distance_to_end < closest_distance):
+            # Update the closest distance and idx
+            closest_distance = distance_to_end
+            closest_element_idx = idx_end
+            # Fill in the "easy" details
+            px_closest = self.__end_points[idx_end,0]
+            py_closest = self.__end_points[idx_end,1]
+            progress_at_closest_p = self.__l_total_at_end[idx_end]
+            road_angle_at_closest_p = self.__end_angles[idx_end]
+            # Compute the side of the road
+            if self.__isStraight[idx_end]:
+                this_vector_to_start = p_query[:,0] - self.__start_points[idx_end,:]
+                this_perp_direction = np.array([np.cos(self.__start_angles[idx_end]+0.5*np.pi),np.sin(self.__start_angles[idx_end]+0.5*np.pi)])
+                this_inner_product_perp = np.inner( this_vector_to_start , this_perp_direction )
+                side_of_the_road_line = (1.0) if (this_inner_product_perp >= 0) else  (-1.0)
+            else:
+                this_vector_to_arc_center = p_query[:,0] - self.__arc_centers[idx_end,:]
+                this_dist_to_arc_center = np.linalg.norm(this_vector_to_arc_center)
+                this_dist_to_arc = this_dist_to_arc_center - (1/abs(self.__c[idx_end]))
+                # Compute which side of the line it is on
+                if (np.sign(self.__c[idx_end]) > 0):
+                    side_of_the_road_line = (1.0) if (this_dist_to_arc < 0) else  (-1.0)
+                else:
+                    side_of_the_road_line = (1.0) if (this_dist_to_arc > 0) else  (-1.0)
+
+
+
         # Check all other canditates
         for idx in idxs_to_check:
             if self.__isStraight[idx]:
