@@ -99,8 +99,8 @@ def ensure_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-def eval_model(env, model, figs_dir, timestep):
-    px_traj, py_raj, rewards = simulate_episode(env, model)
+def eval_model(env, model, figs_dir, timestep, max_steps = 5000):
+    px_traj, py_raj, rewards = simulate_episode(env, model, max_steps)
     fig_trajectory = plot_trajectory(env, px_traj, py_raj)
     fig_rewards = plot_rewards(rewards)
     fig_trajectory.savefig(f"{figs_dir}/{timestep}_traj.png")
