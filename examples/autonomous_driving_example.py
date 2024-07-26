@@ -8,6 +8,25 @@ import ai4rgym
 
 
 
+## ----------------------
+#  PRINT THE RUNNING PATH
+#  ----------------------
+import os
+# get the current working directory
+current_working_directory = os.getcwd()
+# print output to the console
+print('This script is running from the following path:')
+print(current_working_directory)
+
+
+
+## -----------------------------------
+#  SPECIFY THE PATH FOR SAVING FIGURES
+#  -----------------------------------
+path_for_saving_figures = 'examples/saved_figures'
+
+
+
 ## ------------------------------
 #  SPECIFY THE VEHICLE PARAMETERS
 #  ------------------------------
@@ -229,14 +248,14 @@ env.unwrapped.render_matplotlib_plot_road()
 # Add a title
 env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
 # Save the figure
-env.unwrapped.figure.savefig('saved_figures/ad_road.pdf')
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road.pdf')
 
 # Zoom into the start position
 env.unwrapped.render_matplotlib_zoom_to(px=0,py=0,x_width=20,y_height=20)
 # Add a title
 env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
 # Save the figure
-env.unwrapped.figure.savefig('saved_figures/ad_road_zoom.pdf')
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_zoom.pdf')
 
 #env.unwrapped.car.render_car(axis,px,py,theta,delta,scale=1.0)
 
@@ -570,7 +589,7 @@ fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
 fig.suptitle("Comparing numerical integration methods on closed loop simulations", fontsize=12)
 
 # Save the plot
-fig.savefig('saved_figures/ad_time_series.pdf') 
+fig.savefig(path_for_saving_figures + '/ad_time_series.pdf')
 
 
 
@@ -626,4 +645,4 @@ fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
 fig.suptitle("Showing the road and the (px,py) trajectories", fontsize=12)
 
 # Save the plot
-fig.savefig('saved_figures/ad_cartesian_coords.pdf') 
+fig.savefig(path_for_saving_figures + '/ad_cartesian_coords.pdf')

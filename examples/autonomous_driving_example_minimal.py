@@ -8,6 +8,24 @@ import ai4rgym
 
 
 
+## ----------------------
+#  PRINT THE RUNNING PATH
+#  ----------------------
+import os
+# get the current working directory
+current_working_directory = os.getcwd()
+# print output to the console
+print('This script is running from the following path:')
+print(current_working_directory)
+
+
+## -----------------------------------
+#  SPECIFY THE PATH FOR SAVING FIGURES
+#  -----------------------------------
+path_for_saving_figures = 'examples/saved_figures'
+
+
+
 ## ------------------------------
 #  SPECIFY THE VEHICLE PARAMETERS
 #  ------------------------------
@@ -139,7 +157,7 @@ env.unwrapped.render_matplotlib_plot_road()
 # Add a title
 env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
 # Save the figure
-env.unwrapped.figure.savefig('saved_figures/ad_road_minimal.pdf')
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_minimal.pdf')
 
 
 
@@ -312,4 +330,4 @@ fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
 fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
 
 # Save the plot
-fig.savefig('saved_figures/ad_cartesian_coords_minimal.pdf') 
+fig.savefig(path_for_saving_figures + '/ad_cartesian_coords_minimal.pdf')
