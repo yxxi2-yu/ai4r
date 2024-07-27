@@ -173,13 +173,24 @@ class AutonomousDrivingEnv(gym.Env):
         #   - Requested steering angle.
         #     Range between plus/minus car_parameters["delta_request_max"]
         #     Units: radians
-        # > For readability, we use a dictionary
-        self.action_space = spaces.Dict(
-            {
-                "drive_command": spaces.Box(low=-100.0, high=100.0, shape=(1,), dtype=np.float32),
-                "delta_request": spaces.Box(low=-bicycle_model_parameters["delta_request_max"], high=bicycle_model_parameters["delta_request_max"], shape=(1,), dtype=np.float32),
-            }
+        self.action_space = spaces.Box(
+            low =np.array([-100.0, -bicycle_model_parameters["delta_request_max"]]),
+            high=np.array([ 100.0,  bicycle_model_parameters["delta_request_max"]]),
+            shape=(2,), dtype=np.float32
         )
+
+        # > For readability, would we use a dictionary,...
+        #   HOWEVER, action space dictionaries are not compatible with
+        #   the Stable Baselines 3 RL training library.
+        #self.action_space = spaces.Dict(
+        #    {
+        #        "drive_command": spaces.Box(low=-100.0, high=100.0, shape=(1,), dtype=np.float32),
+        #        "delta_request": spaces.Box(low=-bicycle_model_parameters["delta_request_max"], high=bicycle_model_parameters["delta_request_max"], shape=(1,), dtype=np.float32),
+        #   }
+        #)
+
+        # To still provide some readability for the action space box:
+        self.action_space_labels = ["Drive command","Requested steering angle"]
 
         # THE CAR:
         # Create an instance of the bicycle model
@@ -442,17 +453,17 @@ class AutonomousDrivingEnv(gym.Env):
 
         Parameters
         ----------
-            action : dictionary
+            action : array
                 Should match the format defined by self.action_space,
                 i.e., with the following keys:
-                - "drive_command" : float
+                - action[0] : float
                   Drive command to the motor in percent.
                   100.0 (percent) means maximum force is applied to the
                   bicycle model in the forwards direction (i.e., in the
                   body frame positive x-direction)
                   -100.0 (percent) means maximum force is applied in the 
                   backwards direction (i.e., body frame negative x-direction)
-                - "delta_request" float
+                - action[1] : float
                   Requested steering angle (units: radians)
 
         Returns
@@ -466,8 +477,8 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Set the action request for bicycle model
         self.car.set_action_requests(
-            drive_command_request  = action["drive_command"],
-            delta_request = action["delta_request"],
+            drive_command_request  = action[0],
+            delta_request = action[1],
         )
 
         # Get the road condition

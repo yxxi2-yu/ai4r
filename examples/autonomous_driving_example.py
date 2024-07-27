@@ -44,6 +44,8 @@ bicycle_model_parameters = {
     "delta_request_max" : 45 * np.pi/180,
     "Ddelta_lower_limit" : -45 * np.pi/180,
     "Ddelta_upper_limit" :  45 * np.pi/180,
+    "v_transition_min" : 500.0 / 3.6,
+    "v_transition_max" : 600.0 / 3.6,
     "Dp_dry"  :  1.0,
     "Cp_dry"  :  1.9,
     "Bp_dry"  : 10.0,
@@ -61,6 +63,12 @@ bicycle_model_parameters = {
     "Bp_ice"  :  4.0,
     "Ep_ice"  :  1.0,
 }
+
+# Note:
+# The "v_transition_min" and "v_transition_max" specifications
+# have defaults values of 3.0 and 5.0 m/s respectively.
+# Set these values to be exceesively high to use a purely
+# kinematic model of the vehicle.
 
 # The model parameters above are based on a Telsa Model 3:
 # > Source: https://www.tesla.com/ownersmanual/model3/en_cn/GUID-E414862C-CFA1-4A0B-9548-BE21C32CAA58.html
@@ -361,13 +369,13 @@ for integration_method in integration_methods:
 
     # Put the initial condition into the first entry of the state trajectory results
     this_time_index = 0
-    px_traj[this_method_index,this_time_index]    = observation["px"]
-    py_traj[this_method_index,this_time_index]    = observation["py"]
-    theta_traj[this_method_index,this_time_index] = observation["theta"]
-    vx_traj[this_method_index,this_time_index]    = observation["vx"]
-    vy_traj[this_method_index,this_time_index]    = observation["vy"]
-    omega_traj[this_method_index,this_time_index] = observation["omega"]
-    delta_traj[this_method_index,this_time_index] = observation["delta"]
+    px_traj[this_method_index,this_time_index]    = observation["px"][0]
+    py_traj[this_method_index,this_time_index]    = observation["py"][0]
+    theta_traj[this_method_index,this_time_index] = observation["theta"][0]
+    vx_traj[this_method_index,this_time_index]    = observation["vx"][0]
+    vy_traj[this_method_index,this_time_index]    = observation["vy"][0]
+    omega_traj[this_method_index,this_time_index] = observation["omega"][0]
+    delta_traj[this_method_index,this_time_index] = observation["delta"][0]
 
     px_closest_traj[this_method_index,this_time_index]  = info_dict["px_closest"]
     py_closest_traj[this_method_index,this_time_index]  = info_dict["py_closest"]
@@ -413,7 +421,7 @@ for integration_method in integration_methods:
         side_of_the_road_line = info_dict["side_of_the_road_line"]
 
         # Compute the speed of the car
-        speed = np.sqrt( observation["vx"][0]**2 + observation["vy"][0]**2 )
+        speed = np.sqrt( observation["vx"][0]**2 + observation["vy"][0]**2 ) * np.sign(observation["vx"][0])
         # Compute the error between the reference and actual speed
         speed_error = speed_ref - speed
         # Compute the drive command action
@@ -424,15 +432,23 @@ for integration_method in integration_methods:
         # Compute the steering angle request action
         delta_request = 4.0*(np.pi/180.0) * closest_distance * -side_of_the_road_line
 
+        # Construct the action vector expected by the gymnasium
+        action = np.array([drive_command_clipped,delta_request], dtype=np.float32)
+
         # Construct the action dictionary expected by the gymnasium
-        action = {
-            "drive_command" : drive_command_clipped,
-            "delta_request" : delta_request
-        }
+        #action = {
+        #    "drive_command" : drive_command_clipped,
+        #    "delta_request" : delta_request
+        #}
+
+        # Zero input if go too fast
+        if (speed > 50.0):
+            action[0] = 0.0
+            action[1] = 0.0
 
         # Zero steering after reaching the end of the road
         if (run_terminated):
-            action["delta_request"] = 0.0
+            action[1] = 0.0
 
         #  END OF POLICY CODE
         ## --------------------
@@ -444,18 +460,18 @@ for integration_method in integration_methods:
 
         # Store the results
         # > For the actions at this time step
-        drive_command_traj[this_method_index,this_time_index] = action["drive_command"]
-        delta_request_traj[this_method_index,this_time_index] = action["delta_request"]
+        drive_command_traj[this_method_index,this_time_index] = action[0]
+        delta_request_traj[this_method_index,this_time_index] = action[1]
         # Increment that time index counter
         this_time_index = this_time_index+1
         # > For the state:
-        px_traj[this_method_index,this_time_index]    = observation["px"]
-        py_traj[this_method_index,this_time_index]    = observation["py"]
-        theta_traj[this_method_index,this_time_index] = observation["theta"]
-        vx_traj[this_method_index,this_time_index]    = observation["vx"]
-        vy_traj[this_method_index,this_time_index]    = observation["vy"]
-        omega_traj[this_method_index,this_time_index] = observation["omega"]
-        delta_traj[this_method_index,this_time_index] = observation["delta"]
+        px_traj[this_method_index,this_time_index]    = observation["px"][0]
+        py_traj[this_method_index,this_time_index]    = observation["py"][0]
+        theta_traj[this_method_index,this_time_index] = observation["theta"][0]
+        vx_traj[this_method_index,this_time_index]    = observation["vx"][0]
+        vy_traj[this_method_index,this_time_index]    = observation["vy"][0]
+        omega_traj[this_method_index,this_time_index] = observation["omega"][0]
+        delta_traj[this_method_index,this_time_index] = observation["delta"][0]
         
         # > For the closest point
         px_closest_traj[this_method_index,this_time_index] = info_dict["px_closest"]

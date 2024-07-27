@@ -22,7 +22,7 @@ class BicycleModelDynamic:
 
     Actions that can be requested of this simulator:
     - drive_command_request  :  directly the drive command input of the dynamic model (units: [-100,100] %)
-    - delta_request          :  steering rate of the front wheel (units: [-100,100] %)
+    - delta_request          :  steering angle of the front wheel in percentage of the steering range (units: [-100,100] %)
 
     Parameters:
     - L   :  wheel-base length, i.e., distance between front and rear axels (units: m)
@@ -33,8 +33,8 @@ class BicycleModelDynamic:
     - Bp  :  Pacejka's tyre formala "stiffness" coefficient
     - Ep  :  Pacejka's tyre formala "curvature" coefficient
 
-    - v_transition_min : the velocity below which the eom simulate a purely kinematic model (units: m/s)
-    - v_transition_min : the velocity above which the eom simulate a purely dynamic model (units: m/s)
+    - v_transition_min : the velocity below which the equation-of-motion simulate a purely kinematic model (units: m/s)
+    - v_transition_max : the velocity above which the equation-of-motion simulate a purely dynamic model (units: m/s)
 
     Bounds on the states:
     - No explicit bounds. The request bounds below implicitly limit the v and delta states.
@@ -297,14 +297,17 @@ class BicycleModelDynamic:
             [px_dot, py_dot, theta_dot, vx_dot, vy_dot, omega_dot, delta_dot]
         """
         # Compute the drive force
-        F = a[0] * mp["Cm"] - mp["Cd"] * s[3] * s[3]
+        F = a[0] * mp["Cm"] - mp["Cd"] * s[3] * s[3] * np.sign(s[3])
 
         # Get the transition range into local variables
         vt_min = mp["v_transition_min"]
         vt_max = mp["v_transition_max"]
 
+        # Compute the absolute value of the velocity "vx"
+        abs_vx = abs(s[3])
+
         # Compute the kinematic model "state dot" (only if necessary)
-        if (s[3] >= vt_max):
+        if (abs_vx >= vt_max):
             s_dot_kinematic = np.array([0,0,0,0,0,0,0], dtype=np.float32())
         else:
             # Compute the state dot
@@ -322,7 +325,7 @@ class BicycleModelDynamic:
               ], dtype=np.float32)
 
         # Compute the dynamic model "state dot" (only if necessary)
-        if (s[3] <= vt_min):
+        if (abs_vx <= vt_min):
             s_dot_dynamic = np.array([0,0,0,0,0,0,0], dtype=np.float32())
         else:
             # Compute the front wheel slip angle
@@ -354,7 +357,6 @@ class BicycleModelDynamic:
               ], dtype=np.float32)
 
         # Compute the "state dot" that blends the kinemaitc and dynamic models
-        abs_vx = abs(s[3])
         if (abs_vx >= vt_max):
             s_dot = np.array(s_dot_dynamic, dtype=np.float32)
         elif (abs_vx <= vt_min):

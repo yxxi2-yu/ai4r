@@ -8,6 +8,8 @@ import ai4rgym
 
 
 
+
+
 ## ----------------------
 #  PRINT THE RUNNING PATH
 #  ----------------------
@@ -17,6 +19,8 @@ current_working_directory = os.getcwd()
 # print output to the console
 print('This script is running from the following path:')
 print(current_working_directory)
+
+from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
 
 
 ## -----------------------------------
@@ -43,7 +47,15 @@ bicycle_model_parameters = {
     "delta_request_max" : 45 * np.pi/180,
     "Ddelta_lower_limit" : -45 * np.pi/180,
     "Ddelta_upper_limit" :  45 * np.pi/180,
+    "v_transition_min" : 500.0 / 3.6,
+    "v_transition_max" : 600.0 / 3.6,
 }
+
+# Note:
+# The "v_transition_min" and "v_transition_max" specifications
+# have defaults values of 3.0 and 5.0 m/s respectively.
+# Set these values to be exceesively high to use a purely
+# kinematic model of the vehicle.
 
 # The model parameters above are based on a Telsa Model 3:
 # > Source: https://www.tesla.com/ownersmanual/model3/en_cn/GUID-E414862C-CFA1-4A0B-9548-BE21C32CAA58.html
@@ -86,7 +98,7 @@ road_elements_list = [
 numerical_integration_parameters = {
     "method" : "rk4",
     "Ts" : 0.05,
-    #"num_steps_per_Ts" : 1,
+    "num_steps_per_Ts" : 1,
 }
 
 
@@ -207,6 +219,7 @@ print("Now starting simulation.")
 run_terminated = False
 
 
+pid_policy = PIDPolicyForAutonomousDriving()
 
 # ITERATE OVER THE TIME STEPS OF THE SIMULATION
 for i_step in range(N_sim):
@@ -244,7 +257,7 @@ for i_step in range(N_sim):
     side_of_the_road_line = info_dict["side_of_the_road_line"]
 
     # Compute the speed of the car
-    speed = np.sqrt( observation["vx"][0]**2 + observation["vy"][0]**2 )
+    speed = np.sqrt( observation["vx"][0]**2 + observation["vy"][0]**2 ) * np.sign(observation["vx"][0])
     # Compute the error between the reference and actual speed
     speed_error = speed_ref - speed
     # Compute the drive command action
@@ -260,15 +273,25 @@ for i_step in range(N_sim):
     # Compute the steering angle request action
     delta_request = kp_steering*(np.pi/180.0) * closest_distance * (-side_of_the_road_line)
 
-    # Construct the action dictionary expected by the gymnasium
-    action = {
-        "drive_command" : drive_command_clipped,
-        "delta_request" : delta_request
-    }
+    # Construct the action vector expected by the gymnasium
+    action = np.array([drive_command_clipped,delta_request], dtype=np.float32)
 
-    # Zero steering after reaching the end of the road
+    # Construct the action dictionary expected by the gymnasium
+    #action = {
+    #    "drive_command" : drive_command_clipped,
+    #    "delta_request" : delta_request
+    #}
+
+    # Zero input if go too fast
+    if (speed > 50.0):
+        action[0] = 0.0
+        action[1] = 0.0
+
+    # Zero steering and drive after reaching the end of the road
     if (run_terminated):
-        action["delta_request"] = 0.0
+        action[1] = 0.0
+
+    action = pid_policy.compute_action(observation, info_dict, run_terminated)
 
     #  END OF POLICY CODE
     ## --------------------
