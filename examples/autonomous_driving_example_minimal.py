@@ -158,6 +158,7 @@ env.unwrapped.render_matplotlib_plot_road()
 env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
 # Save the figure
 env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_minimal.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords_minimal.pdf')
 
 
 
@@ -194,8 +195,8 @@ observation, info_dict = env.reset()
 
 # Put the initial condition into the first entry of the state trajectory results
 this_time_index = 0
-px_traj[this_time_index] = observation["px"]
-py_traj[this_time_index] = observation["py"]
+px_traj[this_time_index] = observation["px"][0]
+py_traj[this_time_index] = observation["py"][0]
 
 # Display that we are starting this simulation run
 print("\n")
@@ -279,8 +280,8 @@ for i_step in range(N_sim):
 
     # Store the results
     this_time_index = this_time_index+1
-    px_traj[this_time_index] = observation["px"]
-    py_traj[this_time_index] = observation["py"]
+    px_traj[this_time_index] = observation["px"][0]
+    py_traj[this_time_index] = observation["py"][0]
 
     # Check whether the car reached the end of the road
     if terminated:
@@ -331,3 +332,4 @@ fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
 
 # Save the plot
 fig.savefig(path_for_saving_figures + '/ad_cartesian_coords_minimal.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords_minimal.pdf')
