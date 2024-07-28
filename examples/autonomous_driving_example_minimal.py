@@ -5,6 +5,7 @@ import time
 import matplotlib.pyplot as plt
 import gymnasium
 import ai4rgym
+from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
 
 
 
@@ -20,7 +21,6 @@ current_working_directory = os.getcwd()
 print('This script is running from the following path:')
 print(current_working_directory)
 
-from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
 
 
 ## -----------------------------------
