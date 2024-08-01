@@ -2,6 +2,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 from ai4rgym.envs.bicycle_model_dynamic import BicycleModelDynamic
 from ai4rgym.envs.road import Road
@@ -578,8 +579,6 @@ class AutonomousDrivingEnv(gym.Env):
         #   matplotlib.pyploy.FuncAnimation
         return self.car_handles
 
-
-
     def render_matplotlib_plot_road(self):
         # Initialize the figure, if it does not already exist
         if (self.figure is None):
@@ -598,20 +597,59 @@ class AutonomousDrivingEnv(gym.Env):
         # Return the road handles
         return self.road_handles
 
-
-#env.unwrapped.render_matplotlib_plot_car(px,py,theta,delta)
-
-    def render_matplotlib_zoom_to(self, px, py, x_width, y_height):
-        if (self.figure is not None):
+    def render_matplotlib_zoom_to(self, px, py, x_width, y_height, axis_handle=None):
+        if (axis_handle is not None):
+            # Set the axis limits
+            axis_handle.set_xlim(xmin=px-0.5*x_width,  xmax=px+0.5*x_width)
+            axis_handle.set_ylim(ymin=py-0.5*y_height, ymax=py+0.5*y_height)
+        elif (self.figure is not None):
             # Set the axis limits
             self.axis.set_xlim(xmin=px-0.5*x_width,  xmax=px+0.5*x_width)
             self.axis.set_ylim(ymin=py-0.5*y_height, ymax=py+0.5*y_height)
 
+    def render_matplotlib_animation_of_trajectory(self, px_traj, py_traj, theta_traj, delta_traj, Ts, traj_increment=1, figure_title=None):
+        # Create a figure for the animation
+        fig_4_ani, axis_4_ani = plt.subplots(1, 1)
+        interval_btw_frames_ms = Ts * 1000
+
+        # Plot the road
+        self.road.render_road(axis_4_ani)
+
+        # Add a title
+        if (figure_title is None):
+            fig_4_ani.suptitle('Animation of car', fontsize=12)
+        else:
+            fig_4_ani.suptitle(figure_title, fontsize=12)
+
+        # Plot the start position
+        car_handles = self.car.render_car(axis_4_ani,px_traj[0],py_traj[0],theta_traj[0],delta_traj[0],scale=1.0)
+
+        # Zoom into the start position
+        self.render_matplotlib_zoom_to(px=px_traj[0],py=py_traj[0],x_width=20,y_height=20,axis_handle=axis_4_ani)
+
+        # Display that that animation creation is about to start
+        print("Now creating the animation, this may take some time.")
+
+        # Function for printing each individual frame of the animation
+        def animate_one_trajectory_frame(i):
+            # Update the car
+            self.car.render_car(axis_4_ani,px_traj[i],py_traj[i],theta_traj[i],delta_traj[i],scale=1.0, plot_handles=car_handles)
+            # Update the window
+            self.render_matplotlib_zoom_to(px=px_traj[i],py=py_traj[i],x_width=20,y_height=20,axis_handle=axis_4_ani)
+
+        # Create the list of trajectory indicies to render
+        traj_idx_to_render = range(0,len(px_traj),traj_increment)
+
+        # Create the animation
+        ani = animation.FuncAnimation(fig_4_ani, animate_one_trajectory_frame, frames=traj_idx_to_render, interval=interval_btw_frames_ms)
+
+        # Return the animation object
+        return ani
+
+
     #def render(self):
     #    if self.render_mode == "matplotlib":
     #        return self._render_frame()
-
-
 
     #def _render_frame(self):
     #    return

@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy import integrate
+from matplotlib.patches import Rectangle
 
 class BicycleModelDynamic:
     """
@@ -25,7 +26,8 @@ class BicycleModelDynamic:
     - delta_request          :  steering angle of the front wheel in percentage of the steering range (units: [-100,100] %)
 
     Parameters:
-    - L   :  wheel-base length, i.e., distance between front and rear axels (units: m)
+    - Lf  :  distance between the center-of-gravity and the front axels (units: m)
+    - Lr  :  distance between the center-of-gravity and the rear axels (units: m)
     - Cm  :  motor constant that convert the drive command to force applied to the wheel (units: N/"100% command")
     - Cd  :  coefficient of aerodynamics drag that opposes the direction of motion (units: N / (m/s)^2))
     - Dp  :  Pacejka's tyre formala "peak" coefficient
@@ -35,6 +37,10 @@ class BicycleModelDynamic:
 
     - v_transition_min : the velocity below which the equation-of-motion simulate a purely kinematic model (units: m/s)
     - v_transition_max : the velocity above which the equation-of-motion simulate a purely dynamic model (units: m/s)
+
+    - body_len_f  :  length of the body from the center-of-gravity to the front bumber (units: m)
+    - body_len_r  :  length of the body from the center-of-gravity to the rear bumber (units: m)
+    - body_width  :  width of the body (units: m)
 
     Bounds on the states:
     - No explicit bounds. The request bounds below implicitly limit the v and delta states.
@@ -123,7 +129,7 @@ class BicycleModelDynamic:
         self.Ddelta_lower_limit = model_parameters["Ddelta_lower_limit"]
         self.Ddelta_upper_limit = model_parameters["Ddelta_upper_limit"]
 
-        # > For the range ovre which to transition from kinematic to dynamic
+        # > For the range over which to transition from kinematic to dynamic
         #   bicycle model
         if ("v_transition_min" in model_parameters):
             self.v_transition_min = model_parameters["v_transition_min"]
@@ -133,6 +139,11 @@ class BicycleModelDynamic:
             self.v_transition_max = model_parameters["v_transition_max"]
         else:
             self.v_transition_max = 5.0
+
+        # > For the body size parameters
+        self.body_len_f =  (self.Lf*1.125) if ("body_len_f" not in model_parameters) else model_parameters["body_len_f"]
+        self.body_len_r =  (self.Lr*1.125) if ("body_len_r" not in model_parameters) else model_parameters["body_len_r"]
+        self.body_width =  ((self.Lf+self.Lr)*0.4) if ("body_width" not in model_parameters) else model_parameters["body_width"]
 
 
         # Construct a dictionary of the model parameters are needed for the equations of motion
@@ -545,7 +556,7 @@ class BicycleModelDynamic:
 
 
 
-    def render_car(self, axis_handle, px, py, theta, delta, scale=1.0):
+    def render_car(self, axis_handle, px, py, theta, delta, scale=1.0, plot_handles=None):
         """
         Plot the road.
 
@@ -558,17 +569,21 @@ class BicycleModelDynamic:
             theta : float
             delta : float
             scale : float
+            plot_handles : dictionary [OPTIONAL]
 
         Returns
         -------
-            plot_handles : [matplotlib.lines.Line2D]
+            plot_handles : {matplotlib.lines.Line2D, ..., matplotlib.patches.Rectangle}
                 The handles to the lines that are plotted.
         """
-        plot_handles = []
         # Get the length parameters
         Lf = self.Lf * scale
         Lr = self.Lr * scale
-        w_radius = 0.125 * np.sqrt(Lf**2 + Lr**2)
+        body_len_f = self.body_len_f * scale
+        body_len_r = self.body_len_r * scale
+        body_width = self.body_width * scale
+        # Compute a wheel radius
+        w_radius = 0.1 * (Lf+Lr) #np.sqrt(Lf**2 + Lr**2)
         # Compute the front and rear wheel locations
         pxf = px + Lf * np.cos(theta)
         pyf = py + Lf * np.sin(theta)
@@ -577,8 +592,10 @@ class BicycleModelDynamic:
         pyr = py - Lr * np.sin(theta)
 
         # Plot the body
-        this_handle = axis_handle.plot( [pxr,pxf], [pyr,pyf], linewidth=1, color="black" )
-        plot_handles.append( this_handle )
+        if (plot_handles is None):
+            body_line_handle = axis_handle.plot( [pxr,pxf], [pyr,pyf], linewidth=2, color="black" )
+        else:
+            plot_handles["body_line"].set_data([pxr,pxf], [pyr,pyf])
 
         # Compute the front wheel
         wfxf = pxf + w_radius * np.cos(theta+delta)
@@ -586,8 +603,10 @@ class BicycleModelDynamic:
         wfxr = pxf - w_radius * np.cos(theta+delta)
         wfyr = pyf - w_radius * np.sin(theta+delta)
         # Plot the front wheel
-        this_handle = axis_handle.plot( [wfxr,wfxf], [wfyr,wfyf], linewidth=2, color="black" )
-        plot_handles.append( this_handle )
+        if (plot_handles is None):
+            front_wheel_handle = axis_handle.plot( [wfxr,wfxf], [wfyr,wfyf], linewidth=4, color="black" )
+        else:
+            plot_handles["front_wheel"].set_data([wfxr,wfxf], [wfyr,wfyf])
 
         # Compute the rear wheel
         wrxf = pxr + w_radius * np.cos(theta)
@@ -595,21 +614,35 @@ class BicycleModelDynamic:
         wrxr = pxr - w_radius * np.cos(theta)
         wryr = pyr - w_radius * np.sin(theta)
         # Plot the rear wheel
-        this_handle = axis_handle.plot( [wrxr,wrxf], [wryr,wryf], linewidth=2, color="black" )
-        plot_handles.append( this_handle )
+        if (plot_handles is None):
+            rear_wheel_handle = axis_handle.plot( [wrxr,wrxf], [wryr,wryf], linewidth=4, color="black" )
+        else:
+            plot_handles["rear_wheel"].set_data([wrxr,wrxf], [wryr,wryf])
 
-        # # Iterate through the road elements
-        # for element_idx, this_isStraight  in enumerate(self.__isStraight):
-        #     if (this_isStraight):
-        #         # Directly plot the straight line
-        #         this_handles = axis_handle.plot( [self.__start_points[element_idx,0],self.__end_points[element_idx,0]], [self.__start_points[element_idx,1],self.__end_points[element_idx,1]] )
-        #     else:
-        #         # Plot circle by gridding the angle range
-        #         this_angles = -np.sign(self.__c[element_idx]) * 0.5 * np.pi + np.linspace( start=self.__start_angles[element_idx], stop=self.__end_angles[element_idx], num=max(2,round(0.5*abs(self.__phi[element_idx])*(180/np.pi))) )
-        #         this_x = self.__arc_centers[element_idx,0] + (1/abs(self.__c[element_idx])) * np.cos(this_angles)
-        #         this_y = self.__arc_centers[element_idx,1] + (1/abs(self.__c[element_idx])) * np.sin(this_angles)
-        #         this_handles = axis_handle.plot(this_x, this_y)
+        # Compute the rear-right corner of the body
+        brrx = px - body_len_r * np.cos(theta) + 0.5*body_width * np.sin(theta)
+        brry = py - body_len_r * np.sin(theta) - 0.5*body_width * np.cos(theta)
+        # Plot the body
+        if (plot_handles is None):
+            body_rect_handle = Rectangle(
+                    (brrx,brry),
+                    width=body_len_r+body_len_f, height=body_width,
+                    angle=(theta*57.2957795), rotation_point="xy",
+                    linewidth=0.5, edgecolor="black",
+                    facecolor="blue", alpha=0.5,
+                    )
+            axis_handle.add_patch(body_rect_handle)
+        else:
+            plot_handles["body_rect"].set_xy((brrx,brry))
+            plot_handles["body_rect"].set_angle(theta*57.2957795)
 
-        #     for handle in this_handles: plot_handles.append( handle )
+        # Put the handles into a dictionary
+        if (plot_handles is None):
+            plot_handles = {
+                "body_line" : body_line_handle[0],
+                "front_wheel" : front_wheel_handle[0],
+                "rear_wheel" : rear_wheel_handle[0],
+                "body_rect" : body_rect_handle,
+            }
 
         return plot_handles
