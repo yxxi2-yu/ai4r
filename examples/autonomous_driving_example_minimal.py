@@ -142,6 +142,49 @@ initial_state_bounds = {
 
 
 
+## ----------------------------------
+#  SPECIFY THE OBSERVATION PARAMETERS
+#  ----------------------------------
+
+observation_parameters = {
+    "should_include_obs_for_ground_truth_state"                    :  False,
+    "should_include_obs_for_vx_sensor"                             :  True,
+    "should_include_obs_for_closest_distance_to_line"              :  True,
+    "should_include_obs_for_heading_angle_relative_to_line"        :  True,
+    "should_include_obs_for_heading_angle_gyro"                    :  False,
+    "should_include_obs_for_accel_in_body_frame_x"                 :  False,
+    "should_include_obs_for_accel_in_body_frame_y"                 :  False,
+    "should_include_obs_for_look_ahead_line_coords_in_body_frame"  :  True,
+    "should_include_obs_for_gps_line_coords_in_world_frame"        :  False,
+
+    "scaling_for_ground_truth_state"                    :  0.0,
+    "scaling_for_vx_sensor"                             :  0.0,
+    "scaling_for_closest_distance_to_line"              :  0.0,
+    "scaling_for_heading_angle_relative_to_line"        :  0.0,
+    "scaling_for_heading_angle_gyro"                    :  0.0,
+    "scaling_for_accel_in_body_frame_x"                 :  0.0,
+    "scaling_for_accel_in_body_frame_y"                 :  0.0,
+    "scaling_for_look_ahead_line_coords_in_body_frame"  :  0.0,
+    "scaling_for_gps_line_coords_in_world_frame"        :  0.0,
+
+    "vx_sensor_bias"   : 0.0,
+    "vx_sensor_stddev" : 0.1,
+
+    "closest_distance_to_line_bias"    :  0.0,
+    "closest_distance_to_line_stddev"  :  0.05,
+
+    "heading_angle_relative_to_line_bias"    :  0.0,
+    "heading_angle_relative_to_line_stddev"  :  0.01,
+
+    "heading_angle_gyro_bias"    :  0.0,
+    "heading_angle_gyro_stddev"  :  0.0,
+
+    "look_ahead_line_coords_in_body_frame_distance"             :  50.0,
+    "look_ahead_line_coords_in_body_frame_num_points"           :  10,
+    "look_ahead_line_coords_in_body_frame_stddev_lateral"       :  0.0,
+    "look_ahead_line_coords_in_body_frame_stddev_longitudinal"  :  0.0,
+}
+
 ## ---------------------------------------------
 #  INITIALIZE THE AUTONOMOUS DRIVING ENVIRONMENT
 #  ---------------------------------------------
@@ -156,6 +199,7 @@ env = gymnasium.make(
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
     initial_state_bounds=initial_state_bounds,
+    observation_parameters=observation_parameters,
 )
 
 

@@ -103,7 +103,8 @@ class AutonomousDrivingEnv(gym.Env):
         bicycle_model_parameters,
         road_elements_list,
         numerical_integration_parameters,
-        initial_state_bounds
+        initial_state_bounds,
+        observation_parameters,
     ):
         """
         Initialization function for the "AutonomousDrivingGym" class.
@@ -133,7 +134,7 @@ class AutonomousDrivingEnv(gym.Env):
                 - num_steps_per_Ts : int
                     The number of step that "integration_Ts" is split up into.
 
-            initial_state_bounds
+            initial_state_bounds : dictionary
                 Specifies the minimum and maximum (i.e., lower and upper bounds) us for
                 drawing each element of the initial state from independent uniform
                 distributions.
@@ -145,6 +146,55 @@ class AutonomousDrivingEnv(gym.Env):
                 - vy_init_min,    vy_init_max    : float
                 - omega_init_min, omega_init_max : float
                 - delta_init_min, delta_init_max : float
+
+            observation_parameters : dictionary
+                Specifies the sensor measurements that sholud be included in the
+                observations. Sensor meansurements not included in the observations
+                are included in the "info_dict".
+                This dictionary can contain the following keys:
+                (Flags for which sensor measurements to include in the observations)
+                - should_include_obs_for_ground_truth_state                    :  bool
+                - should_include_obs_for_vx_sensor                             :  bool
+                - should_include_obs_for_closest_distance_to_line              :  bool
+                - should_include_obs_for_heading_angle_relative_to_line        :  bool
+                - should_include_obs_for_heading_angle_gyro                    :  bool
+                - should_include_obs_for_accel_in_body_frame_x                 :  bool
+                - should_include_obs_for_accel_in_body_frame_y                 :  bool
+                - should_include_obs_for_look_ahead_line_coords_in_body_frame  :  bool
+                - should_include_obs_for_gps_line_coords_in_world_frame        :  bool
+
+                (Scaling value for each sensor measurement)
+                - scaling_for_ground_truth_state                    :  float
+                - scaling_for_vx_sensor                             :  float
+                - scaling_for_closest_distance_to_line              :  float
+                - scaling_for_heading_angle_relative_to_line        :  float
+                - scaling_for_heading_angle_gyro                    :  float
+                - scaling_for_accel_in_body_frame_x                 :  float
+                - scaling_for_accel_in_body_frame_y                 :  float
+                - scaling_for_look_ahead_line_coords_in_body_frame  :  float
+                - scaling_for_gps_line_coords_in_world_frame        :  float
+
+                (Specifications for each sensor measurement)
+                - vx_sensor_bias   : float
+                - vx_sensor_stddev : float
+
+                - closest_distance_to_line_bias    :  float
+                - closest_distance_to_line_stddev  :  float
+
+                - heading_angle_relative_to_line_bias    :  float
+                - heading_angle_relative_to_line_stddev  :  float
+
+                - heading_angle_gyro_bias    :  float
+                - heading_angle_gyro_stddev  :  float
+
+                - look_ahead_line_coords_in_body_frame_distance             :  float
+                - look_ahead_line_coords_in_body_frame_num_points           :  float
+                - look_ahead_line_coords_in_body_frame_stddev_lateral       :  float
+                - look_ahead_line_coords_in_body_frame_stddev_longitudinal  :  float
+
+
+
+
 
         Returns
         -------
@@ -226,10 +276,7 @@ class AutonomousDrivingEnv(gym.Env):
         # Set the numerical integration parameters
         self.integration_method = numerical_integration_parameters["method"]
         self.integration_Ts = numerical_integration_parameters["Ts"]
-        if ("num_steps_per_Ts" in numerical_integration_parameters):
-            self.integration_num_steps_per_Ts = numerical_integration_parameters["num_steps_per_Ts"]
-        else:
-            self.integration_num_steps_per_Ts = 1
+        self.integration_num_steps_per_Ts =  1  if ("num_steps_per_Ts" not in numerical_integration_parameters) else numerical_integration_parameters["num_steps_per_Ts"]
 
         # INITIAL CONDITION SPECIFICATIONS:
         # Set the initial condition bound
@@ -247,6 +294,48 @@ class AutonomousDrivingEnv(gym.Env):
         self.omega_init_max = initial_state_bounds["omega_init_max"]
         self.delta_init_min = initial_state_bounds["delta_init_min"]
         self.delta_init_max = initial_state_bounds["delta_init_max"]
+
+        # OBSERVATION PARAMETERS
+        # Set the observation parameters
+        # > Flags for which sensor measurements to include in the observations
+        self.should_include_obs_for_ground_truth_state                    =  False  if ("should_include_obs_for_ground_truth_state"                   not in observation_parameters) else observation_parameters["should_include_obs_for_ground_truth_state"]
+        self.should_include_obs_for_vx_sensor                             =  True   if ("should_include_obs_for_vx_sensor"                            not in observation_parameters) else observation_parameters["should_include_obs_for_vx_sensor"]
+        self.should_include_obs_for_closest_distance_to_line              =  True   if ("should_include_obs_for_closest_distance_to_line"             not in observation_parameters) else observation_parameters["should_include_obs_for_closest_distance_to_line"]
+        self.should_include_obs_for_heading_angle_relative_to_line        =  True   if ("should_include_obs_for_heading_angle_relative_to_line"       not in observation_parameters) else observation_parameters["should_include_obs_for_heading_angle_relative_to_line"]
+        self.should_include_obs_for_heading_angle_gyro                    =  True   if ("should_include_obs_for_heading_angle_gyro"                   not in observation_parameters) else observation_parameters["should_include_obs_for_heading_angle_gyro"]
+        self.should_include_obs_for_accel_in_body_frame_x                 =  False  if ("should_include_obs_for_accel_in_body_frame_x"                not in observation_parameters) else observation_parameters["should_include_obs_for_accel_in_body_frame_x"]
+        self.should_include_obs_for_accel_in_body_frame_y                 =  False  if ("should_include_obs_for_accel_in_body_frame_y"                not in observation_parameters) else observation_parameters["should_include_obs_for_accel_in_body_frame_y"]
+        self.should_include_obs_for_look_ahead_line_coords_in_body_frame  =  True   if ("should_include_obs_for_look_ahead_line_coords_in_body_frame" not in observation_parameters) else observation_parameters["should_include_obs_for_look_ahead_line_coords_in_body_frame"]
+        self.should_include_obs_for_gps_line_coords_in_world_frame        =  False  if ("should_include_obs_for_gps_line_coords_in_world_frame"       not in observation_parameters) else observation_parameters["should_include_obs_for_gps_line_coords_in_world_frame"]
+
+        # > Scaling value for each sensor measurement
+        self.scaling_for_ground_truth_state                    =  1.0  if ("scaling_include_obs_for_ground_truth_state"                   not in observation_parameters) else observation_parameters["scaling_for_ground_truth_state"]
+        self.scaling_for_vx_sensor                             =  1.0  if ("scaling_include_obs_for_vx_sensor"                            not in observation_parameters) else observation_parameters["scaling_for_vx_sensor"]
+        self.scaling_for_closest_distance_to_line              =  1.0  if ("scaling_include_obs_for_closest_distance_to_line"             not in observation_parameters) else observation_parameters["scaling_for_closest_distance_to_line"]
+        self.scaling_for_heading_angle_relative_to_line        =  1.0  if ("scaling_include_obs_for_heading_angle_relative_to_line"       not in observation_parameters) else observation_parameters["scaling_for_heading_angle_relative_to_line"]
+        self.scaling_for_heading_angle_gyro                    =  1.0  if ("scaling_include_obs_for_heading_angle_gyro"                   not in observation_parameters) else observation_parameters["scaling_for_heading_angle_gyro"]
+        self.scaling_for_accel_in_body_frame_x                 =  1.0  if ("scaling_include_obs_for_accel_in_body_frame_x"                not in observation_parameters) else observation_parameters["scaling_for_accel_in_body_frame_x"]
+        self.scaling_for_accel_in_body_frame_y                 =  1.0  if ("scaling_include_obs_for_accel_in_body_frame_y"                not in observation_parameters) else observation_parameters["scaling_for_accel_in_body_frame_y"]
+        self.scaling_for_look_ahead_line_coords_in_body_frame  =  1.0  if ("scaling_include_obs_for_look_ahead_line_coords_in_body_frame" not in observation_parameters) else observation_parameters["scaling_for_look_ahead_line_coords_in_body_frame"]
+        self.scaling_for_gps_line_coords_in_world_frame        =  1.0  if ("scaling_include_obs_for_gps_line_coords_in_world_frame"       not in observation_parameters) else observation_parameters["scaling_for_gps_line_coords_in_world_frame"]
+
+        # > Specifications for each sensor measurement
+        self.vx_sensor_bias    =  0.0  if ("vx_sensor_bias"    not in observation_parameters) else observation_parameters["vx_sensor_bias"]
+        self.vx_sensor_stddev  =  0.1  if ("vx_sensor_stddev"  not in observation_parameters) else observation_parameters["vx_sensor_stddev"]
+
+        self.closest_distance_to_line_bias    =  0.0  if ("closest_distance_to_line_bias"    not in observation_parameters) else observation_parameters["closest_distance_to_line_bias"]
+        self.closest_distance_to_line_stddev  =  0.1  if ("closest_distance_to_line_stddev"  not in observation_parameters) else observation_parameters["closest_distance_to_line_stddev"]
+
+        self.heading_angle_relative_to_line_bias    =  0.0  if ("heading_angle_relative_to_line_bias"    not in observation_parameters) else observation_parameters["heading_angle_relative_to_line_bias"]
+        self.heading_angle_relative_to_line_stddev  =  0.01  if ("heading_angle_relative_to_line_stddev"  not in observation_parameters) else observation_parameters["heading_angle_relative_to_line_stddev"]
+
+        self.heading_angle_gyro_bias    =  0.0  if ("heading_angle_gyro_bias"    not in observation_parameters) else observation_parameters["heading_angle_gyro_bias"]
+        self.heading_angle_gyro_stddev  =  0.01  if ("heading_angle_gyro_stddev"  not in observation_parameters) else observation_parameters["heading_angle_gyro_stddev"]
+
+        self.look_ahead_line_coords_in_body_frame_distance             =  50.0  if ("look_ahead_line_coords_in_body_frame_distance"             not in observation_parameters) else observation_parameters["look_ahead_line_coords_in_body_frame_distance"]
+        self.look_ahead_line_coords_in_body_frame_num_points           =  10  if ("look_ahead_line_coords_in_body_frame_num_points"           not in observation_parameters) else observation_parameters["look_ahead_line_coords_in_body_frame_num_points"]
+        self.look_ahead_line_coords_in_body_frame_stddev_lateral       =   0.0  if ("look_ahead_line_coords_in_body_frame_stddev_lateral"       not in observation_parameters) else observation_parameters["look_ahead_line_coords_in_body_frame_stddev_lateral"]
+        self.look_ahead_line_coords_in_body_frame_stddev_longitudinal  =   0.0  if ("look_ahead_line_coords_in_body_frame_stddev_longitudinal"  not in observation_parameters) else observation_parameters["look_ahead_line_coords_in_body_frame_stddev_longitudinal"]
 
         # Initialize the "previous progress" variable to zero
         # > It is set to the correct value in the reset function
