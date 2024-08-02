@@ -201,21 +201,6 @@ class AutonomousDrivingEnv(gym.Env):
         Nothing
         """
 
-        # OBSERVATION SPACE
-        # > Observations are state of the vehicle
-        # > For readability, we use a dictionary
-        self.observation_space = spaces.Dict(
-            {
-                "px":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "py":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "theta": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "vx":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "vy":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "omega": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "delta": spaces.Box(low=-0.5*np.pi, high=0.5*np.pi, shape=(1,), dtype=np.float32),
-            }
-        )
-
         # ACTION SPACE
         # > Actions are the:
         #   - Drive command (aka., force command) to the motor.
@@ -337,6 +322,128 @@ class AutonomousDrivingEnv(gym.Env):
         self.look_ahead_line_coords_in_body_frame_stddev_lateral       =   0.0  if ("look_ahead_line_coords_in_body_frame_stddev_lateral"       not in observation_parameters) else observation_parameters["look_ahead_line_coords_in_body_frame_stddev_lateral"]
         self.look_ahead_line_coords_in_body_frame_stddev_longitudinal  =   0.0  if ("look_ahead_line_coords_in_body_frame_stddev_longitudinal"  not in observation_parameters) else observation_parameters["look_ahead_line_coords_in_body_frame_stddev_longitudinal"]
 
+        # OBSERVATION SPACE
+        # Construct a normal dictionary for the sensor measurements
+        # that are to be included as observations.
+        # Note that any measurements not included in the observations
+        # is included in the "info_dict".
+        # Hence, the combination of the observation and "info_dict"
+        # provides all possible sensor measurements without duplication.
+
+        # > Initialis an empty dictionary
+        obs_space_dict = {}
+        self.obs_dict_blank = {}
+        self.info_dict_blank = {}
+
+        if (self.should_include_obs_for_ground_truth_state):
+            obs_space_dict.update({
+                "gt_px":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "gt_py":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "gt_theta": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "gt_vx":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "gt_vy":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "gt_omega": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "gt_delta": spaces.Box(low=-0.5*np.pi, high=0.5*np.pi, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({
+                "gt_px":    0.0,
+                "gt_py":    0.0,
+                "gt_theta": 0.0,
+                "gt_vx":    0.0,
+                "gt_vy":    0.0,
+                "gt_omega": 0.0,
+                "gt_delta": 0.0,
+            })
+        else:
+            self.info_dict_blank.update({
+                "gt_px":    0.0,
+                "gt_py":    0.0,
+                "gt_theta": 0.0,
+                "gt_vx":    0.0,
+                "gt_vy":    0.0,
+                "gt_omega": 0.0,
+                "gt_delta": 0.0,
+            })
+
+        if (self.should_include_obs_for_vx_sensor):
+            print("WARNING: the observation is not implemented (vx)")
+            obs_space_dict.update({
+                "vx":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"vx": 0.0})
+        else:
+            self.info_dict_blank.update({"vx": 0.0})
+
+        if (self.should_include_obs_for_closest_distance_to_line):
+            print("WARNING: the observation is not implemented (dist to line)")
+            obs_space_dict.update({
+                "dist_to_line":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"dist_to_line": 0.0})
+        else:
+            self.info_dict_blank.update({"dist_to_line": 0.0})
+
+        if (self.should_include_obs_for_heading_angle_relative_to_line):
+            print("WARNING: the observation is not implemented (heading relative to line)")
+            obs_space_dict.update({
+                "heading_rel_to_line":    spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"heading_rel_to_line": 0.0})
+        else:
+            self.info_dict_blank.update({"heading_rel_to_line": 0.0})
+
+        if (self.should_include_obs_for_heading_angle_gyro):
+            print("WARNING: the observation is not implemented (heading gyro)")
+            obs_space_dict.update({
+                "heading_gyro":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"heading_gyro": 0.0})
+        else:
+            self.info_dict_blank.update({"heading_gyro":0.0})
+
+        if (self.should_include_obs_for_accel_in_body_frame_x):
+            print("WARNING: the observation is not implemented (accelerometer in body frame x)")
+            obs_space_dict.update({
+                "accel_x":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"accel_x": 0.0})
+        else:
+            self.info_dict_blank.update({"accel_x": 0.0})
+
+        if (self.should_include_obs_for_accel_in_body_frame_y):
+            print("WARNING: the observation is not implemented (accelerometer in body frame y)")
+            obs_space_dict.update({
+                "accel_y":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"accel_y": 0.0})
+        else:
+            self.info_dict_blank.update({"accel_y": 0.0})
+
+        if (self.should_include_obs_for_look_ahead_line_coords_in_body_frame):
+            print("WARNING: the observation is not implemented (look ahead line coords)")
+            obs_space_dict.update({
+                "look_ahead_line_coords":    spaces.Box(low=-np.inf, high=np.inf, shape=(2,self.look_ahead_line_coords_in_body_frame_num_points), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"look_ahead_line_coords": 0.0})
+        else:
+            self.info_dict_blank.update({"look_ahead_line_coords": 0.0})
+
+        if (self.should_include_obs_for_gps_line_coords_in_world_frame):
+            print("WARNING: the observation is not implemented (gps line coords)")
+            obs_space_dict.update({
+                "gps_line_coords":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+            })
+            self.obs_dict_blank.update({"gps_line_coords": 0.0})
+        else:
+            self.info_dict_blank.update({"gps_line_coords": 0.0})
+
+
+
+        # > Create the observation space
+        self.observation_space = spaces.Dict(obs_space_dict)
+
+
+
         # Initialize the "previous progress" variable to zero
         # > It is set to the correct value in the reset function
         self.previous_progress_at_closest_p = 0.0
@@ -368,7 +475,7 @@ class AutonomousDrivingEnv(gym.Env):
 
 
 
-    def _get_observation(self):
+    def _get_observation_and_info(self):
         """
         Puts the current state of the car in a dictionary
 
@@ -381,15 +488,73 @@ class AutonomousDrivingEnv(gym.Env):
         dictionary
             Containing keys for each state of the car
         """
-        return {
-            "px":    np.array([self.car.px], dtype=np.float32),
-            "py":    np.array([self.car.py], dtype=np.float32),
-            "theta": np.array([self.car.theta], dtype=np.float32),
-            "vx":    np.array([self.car.vx], dtype=np.float32),
-            "vy":    np.array([self.car.vy], dtype=np.float32),
-            "omega": np.array([self.car.omega], dtype=np.float32),
-            "delta": np.array([self.car.delta], dtype=np.float32),
-        }
+        # Initialise an empty
+        obs_dict  = self.obs_dict_blank
+        info_dict = self.info_dict_blank
+
+        if (self.should_include_obs_for_ground_truth_state):
+            obs_dict.update({
+                "gt_px":    np.array([self.car.px], dtype=np.float32),
+                "gt_py":    np.array([self.car.py], dtype=np.float32),
+                "gt_theta": np.array([self.car.theta], dtype=np.float32),
+                "gt_vx":    np.array([self.car.vx], dtype=np.float32),
+                "gt_vy":    np.array([self.car.vy], dtype=np.float32),
+                "gt_omega": np.array([self.car.omega], dtype=np.float32),
+                "gt_delta": np.array([self.car.delta], dtype=np.float32),
+            })
+        else:
+            info_dict.update({
+                "gt_px":    np.array([self.car.px], dtype=np.float32),
+                "gt_py":    np.array([self.car.py], dtype=np.float32),
+                "gt_theta": np.array([self.car.theta], dtype=np.float32),
+                "gt_vx":    np.array([self.car.vx], dtype=np.float32),
+                "gt_vy":    np.array([self.car.vy], dtype=np.float32),
+                "gt_omega": np.array([self.car.omega], dtype=np.float32),
+                "gt_delta": np.array([self.car.delta], dtype=np.float32),
+            })
+
+        if (self.should_include_obs_for_vx_sensor):
+            obs_dict.update({"vx": np.array([self.car.vx], dtype=np.float32)})
+        else:
+            info_dict.update({"vx": np.array([self.car.vx], dtype=np.float32)})
+
+        if (self.should_include_obs_for_closest_distance_to_line):
+            obs_dict.update({"dist_to_line": np.array([0.0], dtype=np.float32)})
+        else:
+            info_dict.update({"dist_to_line": np.array([0.0], dtype=np.float32)})
+
+        if (self.should_include_obs_for_heading_angle_relative_to_line):
+            obs_dict.update({"heading_rel_to_line": np.array([0.0], dtype=np.float32)})
+        else:
+            info_dict.update({"heading_rel_to_line": np.array([0.0], dtype=np.float32)})
+
+        if (self.should_include_obs_for_heading_angle_gyro):
+            obs_dict.update({"heading_gyro": np.array([0.0], dtype=np.float32)})
+        else:
+            info_dict.update({"heading_gyro": np.array([0.0], dtype=np.float32)})
+
+        if (self.should_include_obs_for_accel_in_body_frame_x):
+            obs_dict.update({"accel_x": np.array([0.0], dtype=np.float32)})
+        else:
+            info_dict.update({"accel_x": np.array([0.0], dtype=np.float32)})
+
+        if (self.should_include_obs_for_accel_in_body_frame_y):
+            obs_dict.update({"accel_y": np.array([0.0], dtype=np.float32)})
+        else:
+            info_dict.update({"accel_y": np.array([0.0], dtype=np.float32)})
+
+        if (self.should_include_obs_for_look_ahead_line_coords_in_body_frame):
+            obs_dict.update({"look_ahead_line_coords": np.zeros((2,self.look_ahead_line_coords_in_body_frame_num_points), dtype=np.float32)})
+        else:
+            info_dict.update({"look_ahead_line_coords": np.zeros((2,self.look_ahead_line_coords_in_body_frame_num_points), dtype=np.float32)})
+
+        if (self.should_include_obs_for_gps_line_coords_in_world_frame):
+            obs_dict.update({"gps_line_coords": np.array([0.0], dtype=np.float32)})
+        else:
+            info_dict.update({"gps_line_coords": np.array([0.0], dtype=np.float32)})
+
+        # Return the two dictionaries
+        return obs_dict, info_dict
 
     def _get_info(self, progress_queries):
         """
@@ -519,7 +684,7 @@ class AutonomousDrivingEnv(gym.Env):
         )
 
         # Get the observation
-        observation = self._get_observation()
+        observation, info_dict = self._get_observation_and_info()
 
         # Get the info dictionary
         info_dict = self._get_info(progress_queries=self.progress_queries)
@@ -596,7 +761,7 @@ class AutonomousDrivingEnv(gym.Env):
         )
 
         # Get the observation
-        observation = self._get_observation()
+        observation, info_dict = self._get_observation_and_info()
 
         # Get the info dictionary
         info_dict = self._get_info(progress_queries=self.progress_queries)

@@ -54,7 +54,7 @@ class PIDPolicyForAutonomousDriving:
         side_of_the_road_line = info_dict["side_of_the_road_line"]
 
         # Compute the speed of the car
-        speed = np.sqrt( observation["vx"][0]**2 + observation["vy"][0]**2 ) * np.sign(observation["vx"][0])
+        speed = np.sqrt( observation["gt_vx"][0]**2 + observation["gt_vy"][0]**2 ) * np.sign(observation["gt_vx"][0])
         # Compute the error between the reference and actual speed
         speed_error = speed_ref - speed
         # Compute the drive command action

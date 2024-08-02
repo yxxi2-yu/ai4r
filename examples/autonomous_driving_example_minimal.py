@@ -147,14 +147,14 @@ initial_state_bounds = {
 #  ----------------------------------
 
 observation_parameters = {
-    "should_include_obs_for_ground_truth_state"                    :  False,
-    "should_include_obs_for_vx_sensor"                             :  True,
-    "should_include_obs_for_closest_distance_to_line"              :  True,
-    "should_include_obs_for_heading_angle_relative_to_line"        :  True,
+    "should_include_obs_for_ground_truth_state"                    :  True,
+    "should_include_obs_for_vx_sensor"                             :  False,
+    "should_include_obs_for_closest_distance_to_line"              :  False,
+    "should_include_obs_for_heading_angle_relative_to_line"        :  False,
     "should_include_obs_for_heading_angle_gyro"                    :  False,
     "should_include_obs_for_accel_in_body_frame_x"                 :  False,
     "should_include_obs_for_accel_in_body_frame_y"                 :  False,
-    "should_include_obs_for_look_ahead_line_coords_in_body_frame"  :  True,
+    "should_include_obs_for_look_ahead_line_coords_in_body_frame"  :  False,
     "should_include_obs_for_gps_line_coords_in_world_frame"        :  False,
 
     "scaling_for_ground_truth_state"                    :  0.0,
@@ -265,10 +265,10 @@ observation, info_dict = env.reset()
 
 # Put the initial condition into the first entry of the state trajectory results
 this_time_index = 0
-px_traj[this_time_index]    = observation["px"][0]
-py_traj[this_time_index]    = observation["py"][0]
-theta_traj[this_time_index] = observation["theta"][0]
-delta_traj[this_time_index] = observation["delta"][0]
+px_traj[this_time_index]    = observation["gt_px"][0]
+py_traj[this_time_index]    = observation["gt_py"][0]
+theta_traj[this_time_index] = observation["gt_theta"][0]
+delta_traj[this_time_index] = observation["gt_delta"][0]
 
 # Display that we are starting this simulation run
 print("\n")
@@ -304,10 +304,10 @@ for i_step in range(N_sim):
 
     # Store the results
     this_time_index = this_time_index+1
-    px_traj[this_time_index]    = observation["px"][0]
-    py_traj[this_time_index]    = observation["py"][0]
-    theta_traj[this_time_index] = observation["theta"][0]
-    delta_traj[this_time_index] = observation["delta"][0]
+    px_traj[this_time_index]    = observation["gt_px"][0]
+    py_traj[this_time_index]    = observation["gt_py"][0]
+    theta_traj[this_time_index] = observation["gt_theta"][0]
+    delta_traj[this_time_index] = observation["gt_delta"][0]
 
     # Check whether the car reached the end of the road
     if terminated:
