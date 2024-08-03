@@ -82,11 +82,11 @@ bicycle_model_parameters = {
 # > {"type":"curved", "curvature":1/50.0, "angle_in_degrees":45.0}
 # > {"type":"curved", "curvature":1/50.0, "length":30.0}
 road_elements_list = [
-    {"type":"straight", "length":30.0},
-    {"type":"curved", "curvature":1/80.0, "angle_in_degrees":120.0},
-    {"type":"straight", "length":30.0},
-    {"type":"curved", "curvature":-1/40.0, "angle_in_degrees":120.0},
-    {"type":"straight", "length":20.0},
+    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":1/800.0, "angle_in_degrees":15.0},
+    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":-1/400.0, "angle_in_degrees":30.0},
+    {"type":"straight", "length":100.0},
 ]
 
 
@@ -149,23 +149,29 @@ initial_state_bounds = {
 observation_parameters = {
     "should_include_obs_for_ground_truth_state"                    :  True,
     "should_include_obs_for_vx_sensor"                             :  False,
-    "should_include_obs_for_closest_distance_to_line"              :  False,
+    "should_include_obs_for_closest_distance_to_line"              :  True,
     "should_include_obs_for_heading_angle_relative_to_line"        :  False,
     "should_include_obs_for_heading_angle_gyro"                    :  False,
     "should_include_obs_for_accel_in_body_frame_x"                 :  False,
     "should_include_obs_for_accel_in_body_frame_y"                 :  False,
-    "should_include_obs_for_look_ahead_line_coords_in_body_frame"  :  False,
+    "should_include_obs_for_look_ahead_line_coords_in_body_frame"  :  True,
+    "should_include_obs_for_look_ahead_road_curvatures"            :  True,
+    "should_include_obs_for_road_progress_at_closest_point"        :  True,
+    "should_include_obs_for_road_curvature_at_closest_point"       :  True,
     "should_include_obs_for_gps_line_coords_in_world_frame"        :  False,
 
-    "scaling_for_ground_truth_state"                    :  0.0,
-    "scaling_for_vx_sensor"                             :  0.0,
-    "scaling_for_closest_distance_to_line"              :  0.0,
-    "scaling_for_heading_angle_relative_to_line"        :  0.0,
-    "scaling_for_heading_angle_gyro"                    :  0.0,
-    "scaling_for_accel_in_body_frame_x"                 :  0.0,
-    "scaling_for_accel_in_body_frame_y"                 :  0.0,
-    "scaling_for_look_ahead_line_coords_in_body_frame"  :  0.0,
-    "scaling_for_gps_line_coords_in_world_frame"        :  0.0,
+    "scaling_for_ground_truth_state"                    :  1.0,
+    "scaling_for_vx_sensor"                             :  1.0,
+    "scaling_for_closest_distance_to_line"              :  1.0,
+    "scaling_for_heading_angle_relative_to_line"        :  1.0,
+    "scaling_for_heading_angle_gyro"                    :  1.0,
+    "scaling_for_accel_in_body_frame_x"                 :  1.0,
+    "scaling_for_accel_in_body_frame_y"                 :  1.0,
+    "scaling_for_look_ahead_line_coords_in_body_frame"  :  1.0,
+    "scaling_for_look_ahead_road_curvatures"            :  1.0,
+    "scaling_for_road_progress_at_closest_point"        :  1.0,
+    "scaling_for_road_curvature_at_closest_point"       :  1.0,
+    "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
 
     "vx_sensor_bias"   : 0.0,
     "vx_sensor_stddev" : 0.1,
@@ -179,7 +185,7 @@ observation_parameters = {
     "heading_angle_gyro_bias"    :  0.0,
     "heading_angle_gyro_stddev"  :  0.0,
 
-    "look_ahead_line_coords_in_body_frame_distance"             :  50.0,
+    "look_ahead_line_coords_in_body_frame_distance"             :  100.0,
     "look_ahead_line_coords_in_body_frame_num_points"           :  10,
     "look_ahead_line_coords_in_body_frame_stddev_lateral"       :  0.0,
     "look_ahead_line_coords_in_body_frame_stddev_longitudinal"  :  0.0,
@@ -244,7 +250,7 @@ Ts_sim = 0.05
 integration_method = "rk4"
 
 # Specify the "progress queries" to look ahead 50 meters
-progress_queries = np.array([100.0], dtype=np.float32)
+#progress_queries = np.array([100.0], dtype=np.float32)
 
 # Initialise array for storing (px,py) trajectory:
 px_traj    = np.empty([N_sim+1,], dtype=np.float32)
@@ -257,7 +263,7 @@ env.unwrapped.set_integration_method(integration_method)
 env.unwrapped.set_integration_Ts(Ts_sim)
 
 # Set the progress queries
-env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
+#env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
 
 # Reset the gymnasium
 # > which also returns the first observation

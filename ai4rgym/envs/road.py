@@ -36,7 +36,7 @@ class Road:
 
 
 
-    def __init__(self, epsilon_c=1/100):
+    def __init__(self, epsilon_c=1/10000):
         """
         Initialization function for the "Road" class.
 
@@ -888,38 +888,43 @@ class Road:
                 state of the car.
                 The properties of the info_dict are:
                 - "px", "py" : float
-                   World-frame (x,y) coordinate of the car.
+                    World-frame (x,y) coordinate of the car.
                 - "px_closest", "py_closest" : float
-                  World-frame (x,y) coordinate of the closest point on the road.
+                    World-frame (x,y) coordinate of the closest point on the road.
                 - "closest_distance" : float
-                  Euclidean distance from the car to the closest point on the road.
+                    Euclidean distance from the car to the closest point on the road.
                 - "side_of_the_road_line" : int
-                  The side of the road that the car is on (1:=left, -1=right).
+                    The side of the road that the car is on (1:=left, -1=right).
                 - "progress_at_closest_p" : float
-                  The total length of road from the start of the road to the closest point.
+                    The total length of road from the start of the road to the closest point.
                 - "road_angle_at_closest_p" : float
-                  The angle of the road at the closest point (relative to the world-frame x-axis).
+                    The angle of the road at the closest point (relative to the world-frame x-axis).
+                - "road_angle_relative_to_body_frame_at_closest_p" : float
+                    Angle of the road, relative to the body frame, at the closest point.
                 - "curvature_at_closest_p" : float
-                  The curvature of the road at the closest point.
+                    The curvature of the road at the closest point.
                 - "closest_element_idx" : int
-                  The index of the road element that is closest to the car.
+                    The index of the road element that is closest to the car.
                 - "progress_queries" : numpy array, 1-dimensional
-                  A repeat of the input parameter that specifies the values of progress-along-the-road,
-                  relative to the current position of the car, at which the observations should be generated. 
+                    A repeat of the input parameter that specifies the values of progress-along-the-road,
+                    relative to the current position of the car, at which the observations should be generated. 
                 - "road_points_in_body_frame" : numpy array, 2-dimensional
-                  (px,py) coordinates in the body frame of the progress query points.
-                  A 2-dimensional numpy array with: size = number of query points -by- 2.
+                    (px,py) coordinates in the body frame of the progress query points.
+                    A 2-dimensional numpy array with: size = number of query points -by- 2.
                 - "road_angles_relative_to_body_frame" : numpy array, 1-dimensional
-                  Angle of the road, relative to the body frame, at each of the progress query points.
-                  A 1-dimensional numpy array with: size = number of query points.
+                    Angle of the road, relative to the body frame, at each of the progress query points.
+                    A 1-dimensional numpy array with: size = number of query points.
                 - "curvatures" : numpy array, 1-dimensional
-                  Curvature of the road at each of the progress query points.
-                  A 1-dimensional numpy array with: size = number of query points.
+                    Curvature of the road at each of the progress query points.
+                    A 1-dimensional numpy array with: size = number of query points.
 
                 Units: all length in meters, all angles in radians.
         """
         # Compute the closest point on the road
         px_closest, py_closest, closest_distance, side_of_the_road_line, progress_at_closest_p, road_angle_at_closest_p, closest_element_idx = self.find_closest_point_to(px=px, py=py)
+
+        # Compute the relative road angle at the closest point
+        road_angle_relative_to_body_frame_at_closest_p = road_angle_at_closest_p - theta
 
         # Get the curvature of the closest element
         curvature_at_closest_p = self.__c[closest_element_idx]
@@ -949,6 +954,7 @@ class Road:
             "side_of_the_road_line" : side_of_the_road_line,
             "progress_at_closest_p" : progress_at_closest_p,
             "road_angle_at_closest_p" : road_angle_at_closest_p,
+            "road_angle_relative_to_body_frame_at_closest_p" : road_angle_relative_to_body_frame_at_closest_p,
             "curvature_at_closest_p" : curvature_at_closest_p,
             "closest_element_idx" : closest_element_idx,
             "progress_queries" : progress_queries,

@@ -30,9 +30,9 @@ class PIDPolicyForAutonomousDriving:
 
     def compute_action(self, observation, info_dict, run_terminated):
         # Get the "info_dict" observation of the curvature at the closest point on the road
-        curvature_at_closest = info_dict["curvature_at_closest_p"]
+        curvature_at_closest = observation["road_curvature_at_closest_point"][0]
         # Get the "info_dict" observation of the curvature at the progress queries to the line
-        look_ahead_curvature = info_dict["curvatures"][0]
+        look_ahead_curvature = observation["look_ahead_road_curvatures"][0]
         
         if (run_terminated):
             # Zero speed reference after reaching the end of the road
@@ -50,8 +50,9 @@ class PIDPolicyForAutonomousDriving:
                 speed_ref = max(speed_ref,20.0/3.6)
 
         # Get the "info_dict" observation of the distance to the line
-        closest_distance = info_dict["closest_distance"]
-        side_of_the_road_line = info_dict["side_of_the_road_line"]
+        #closest_distance = info_dict["closest_distance"]
+        #side_of_the_road_line = info_dict["side_of_the_road_line"]
+        dist_to_line = observation["dist_to_line"][0]
 
         # Compute the speed of the car
         speed = np.sqrt( observation["gt_vx"][0]**2 + observation["gt_vy"][0]**2 ) * np.sign(observation["gt_vx"][0])
@@ -68,7 +69,8 @@ class PIDPolicyForAutonomousDriving:
         kp_steering = max( 0.5 , min( 4.0, kp_steering ) )
 
         # Compute the steering angle request action
-        delta_request = kp_steering*(np.pi/180.0) * closest_distance * (-side_of_the_road_line)
+        #delta_request = kp_steering*(np.pi/180.0) * closest_distance * (-side_of_the_road_line)
+        delta_request = kp_steering*(np.pi/180.0) * (-dist_to_line)
 
         # Construct the action vector expected by the gymnasium
         action = np.array([drive_command_clipped,delta_request], dtype=np.float32)
