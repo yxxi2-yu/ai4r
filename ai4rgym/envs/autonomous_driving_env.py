@@ -525,7 +525,7 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Get the road info for the current pose of the car
         # and at the "progress_queries"
-        progress_queries = np.linspace(0.0 , self.look_ahead_line_coords_in_body_frame_distance, num=(1+self.look_ahead_line_coords_in_body_frame_num_points), endpoint=True)
+        progress_queries = np.linspace(0.0 , self.look_ahead_line_coords_in_body_frame_distance, num=(self.look_ahead_line_coords_in_body_frame_num_points), endpoint=True)
         road_info_dict = self._get_road_info(progress_queries)
         #print(road_info_dict)
 
@@ -762,9 +762,9 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Set the reset point as the previous progress point
         if (self.should_include_obs_for_road_progress_at_closest_point):
-            self.previous_progress_at_closest_p = observation["road_progress_at_closest_point"]
+            self.previous_progress_at_closest_p = observation["road_progress_at_closest_point"][0]
         else:
-            self.previous_progress_at_closest_p = info_dict["road_progress_at_closest_point"]
+            self.previous_progress_at_closest_p = info_dict["road_progress_at_closest_point"][0]
 
         # Render, if necessary
         #if self.render_mode in ["matplotlib"]:
@@ -844,9 +844,9 @@ class AutonomousDrivingEnv(gym.Env):
         # Extract the value of "progress at closest point"
         # Set the reset point as the previous progress point
         if (self.should_include_obs_for_road_progress_at_closest_point):
-            progress_at_closest_point = observation["road_progress_at_closest_point"]
+            progress_at_closest_point = observation["road_progress_at_closest_point"][0]
         else:
-            progress_at_closest_point = info_dict["road_progress_at_closest_point"]
+            progress_at_closest_point = info_dict["road_progress_at_closest_point"][0]
 
         # Compute the "terminated" flag
         terminated = False
