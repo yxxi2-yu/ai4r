@@ -2,6 +2,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 from ai4rgym.envs.bicycle_model_dynamic import BicycleModelDynamic
 from ai4rgym.envs.road import Road
@@ -102,7 +103,8 @@ class AutonomousDrivingEnv(gym.Env):
         bicycle_model_parameters,
         road_elements_list,
         numerical_integration_parameters,
-        initial_state_bounds
+        initial_state_bounds,
+        observation_parameters,
     ):
         """
         Initialization function for the "AutonomousDrivingGym" class.
@@ -132,7 +134,7 @@ class AutonomousDrivingEnv(gym.Env):
                 - num_steps_per_Ts : int
                     The number of step that "integration_Ts" is split up into.
 
-            initial_state_bounds
+            initial_state_bounds : dictionary
                 Specifies the minimum and maximum (i.e., lower and upper bounds) us for
                 drawing each element of the initial state from independent uniform
                 distributions.
@@ -145,25 +147,65 @@ class AutonomousDrivingEnv(gym.Env):
                 - omega_init_min, omega_init_max : float
                 - delta_init_min, delta_init_max : float
 
+            observation_parameters : dictionary
+                Specifies the sensor measurements that sholud be included in the
+                observations. Sensor meansurements not included in the observations
+                are included in the "info_dict".
+                This dictionary can contain the following keys:
+                (Flags for which sensor measurements to include in the observations)
+                - should_include_obs_for_ground_truth_state                    :  bool
+                - should_include_obs_for_vx_sensor                             :  bool
+                - should_include_obs_for_closest_distance_to_line              :  bool
+                - should_include_obs_for_heading_angle_relative_to_line        :  bool
+                - should_include_obs_for_heading_angle_gyro                    :  bool
+                - should_include_obs_for_accel_in_body_frame_x                 :  bool
+                - should_include_obs_for_accel_in_body_frame_y                 :  bool
+                - should_include_obs_for_look_ahead_line_coords_in_body_frame  :  bool
+                - should_include_obs_for_look_ahead_road_curvatures            :  bool
+                - should_include_obs_for_road_progress_at_closest_point        :  bool
+                - should_include_obs_for_road_curvature_at_closest_point       :  bool
+                - should_include_obs_for_gps_line_coords_in_world_frame        :  bool
+
+                (Scaling value for each sensor measurement)
+                - scaling_for_ground_truth_state                    :  float
+                - scaling_for_vx_sensor                             :  float
+                - scaling_for_closest_distance_to_line              :  float
+                - scaling_for_heading_angle_relative_to_line        :  float
+                - scaling_for_heading_angle_gyro                    :  float
+                - scaling_for_accel_in_body_frame_x                 :  float
+                - scaling_for_accel_in_body_frame_y                 :  float
+                - scaling_for_look_ahead_line_coords_in_body_frame  :  float
+                - scaling_for_look_ahead_road_curvatures            :  float
+                - scaling_for_road_progress_at_closes_point         :  float
+                - scaling_for_road_curvature_at_closes_point        :  float
+                - scaling_for_gps_line_coords_in_world_frame        :  float
+
+                (Specifications for each sensor measurement)
+                - vx_sensor_bias   : float
+                - vx_sensor_stddev : float
+
+                - closest_distance_to_line_bias    :  float
+                - closest_distance_to_line_stddev  :  float
+
+                - heading_angle_relative_to_line_bias    :  float
+                - heading_angle_relative_to_line_stddev  :  float
+
+                - heading_angle_gyro_bias    :  float
+                - heading_angle_gyro_stddev  :  float
+
+                - look_ahead_line_coords_in_body_frame_distance             :  float
+                - look_ahead_line_coords_in_body_frame_num_points           :  float
+                - look_ahead_line_coords_in_body_frame_stddev_lateral       :  float
+                - look_ahead_line_coords_in_body_frame_stddev_longitudinal  :  float
+
+
+
+
+
         Returns
         -------
         Nothing
         """
-
-        # OBSERVATION SPACE
-        # > Observations are state of the vehicle
-        # > For readability, we use a dictionary
-        self.observation_space = spaces.Dict(
-            {
-                "px":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "py":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "theta": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "vx":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "vy":    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "omega": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "delta": spaces.Box(low=-0.5*np.pi, high=0.5*np.pi, shape=(1,), dtype=np.float32),
-            }
-        )
 
         # ACTION SPACE
         # > Actions are the:
@@ -173,13 +215,24 @@ class AutonomousDrivingEnv(gym.Env):
         #   - Requested steering angle.
         #     Range between plus/minus car_parameters["delta_request_max"]
         #     Units: radians
-        # > For readability, we use a dictionary
-        self.action_space = spaces.Dict(
-            {
-                "drive_command": spaces.Box(low=-100.0, high=100.0, shape=(1,), dtype=np.float32),
-                "delta_request": spaces.Box(low=-bicycle_model_parameters["delta_request_max"], high=bicycle_model_parameters["delta_request_max"], shape=(1,), dtype=np.float32),
-            }
+        self.action_space = spaces.Box(
+            low =np.array([-100.0, -bicycle_model_parameters["delta_request_max"]]),
+            high=np.array([ 100.0,  bicycle_model_parameters["delta_request_max"]]),
+            shape=(2,), dtype=np.float32
         )
+
+        # > For readability, would we use a dictionary,...
+        #   HOWEVER, action space dictionaries are not compatible with
+        #   the Stable Baselines 3 RL training library.
+        #self.action_space = spaces.Dict(
+        #    {
+        #        "drive_command": spaces.Box(low=-100.0, high=100.0, shape=(1,), dtype=np.float32),
+        #        "delta_request": spaces.Box(low=-bicycle_model_parameters["delta_request_max"], high=bicycle_model_parameters["delta_request_max"], shape=(1,), dtype=np.float32),
+        #   }
+        #)
+
+        # To still provide some readability for the action space box:
+        self.action_space_labels = ["Drive command","Requested steering angle"]
 
         # THE CAR:
         # Create an instance of the bicycle model
@@ -187,7 +240,7 @@ class AutonomousDrivingEnv(gym.Env):
 
         # THE ROAD:
         # Instantiate a RoadEnv object
-        self.road = Road(epsilon_c=(1/500))
+        self.road = Road(epsilon_c=(1/10000))
 
         # Add the road element
         for element in road_elements_list:
@@ -214,10 +267,7 @@ class AutonomousDrivingEnv(gym.Env):
         # Set the numerical integration parameters
         self.integration_method = numerical_integration_parameters["method"]
         self.integration_Ts = numerical_integration_parameters["Ts"]
-        if ("num_steps_per_Ts" in numerical_integration_parameters):
-            self.integration_num_steps_per_Ts = numerical_integration_parameters["num_steps_per_Ts"]
-        else:
-            self.integration_num_steps_per_Ts = 1
+        self.integration_num_steps_per_Ts =  1  if ("num_steps_per_Ts" not in numerical_integration_parameters) else numerical_integration_parameters["num_steps_per_Ts"]
 
         # INITIAL CONDITION SPECIFICATIONS:
         # Set the initial condition bound
@@ -236,6 +286,167 @@ class AutonomousDrivingEnv(gym.Env):
         self.delta_init_min = initial_state_bounds["delta_init_min"]
         self.delta_init_max = initial_state_bounds["delta_init_max"]
 
+
+
+        # OBSERVATION PARAMETERS
+        # Speficify the default values of the observation parameters
+        # > Flags for which sensor measurements to include in the observations or info dict
+        # > Scaling value for each sensor measurement
+        # > Specifications for each sensor measurement
+        observation_parameters_defaults = {
+            "should_include_ground_truth_px"                       :  "info",
+            "should_include_ground_truth_py"                       :  "info",
+            "should_include_ground_truth_theta"                    :  "info",
+            "should_include_ground_truth_vx"                       :  "info",
+            "should_include_ground_truth_vy"                       :  "info",
+            "should_include_ground_truth_omega"                    :  "info",
+            "should_include_ground_truth_delta"                    :  "info",
+            "should_include_road_progress_at_closest_point"        :  "obs",
+            "should_include_vx_sensor"                             :  "obs",
+            "should_include_distance_to_closest_point"             :  "obs",
+            "should_include_heading_angle_relative_to_line"        :  "obs",
+            "should_include_heading_angular_rate_gyro"             :  "obs",
+            "should_include_accel_in_body_frame_x"                 :  "neither",
+            "should_include_accel_in_body_frame_y"                 :  "neither",
+            "should_include_closest_point_coords_in_body_frame"    :  "obs",
+            "should_include_look_ahead_line_coords_in_body_frame"  :  "obs",
+            "should_include_road_curvature_at_closest_point"       :  "obs",
+            "should_include_look_ahead_road_curvatures"            :  "obs",
+            "should_include_gps_line_coords_in_world_frame"        :  "neither",
+
+            "scaling_for_ground_truth_px"                       :  1.0,
+            "scaling_for_ground_truth_py"                       :  1.0,
+            "scaling_for_ground_truth_theta"                    :  1.0,
+            "scaling_for_ground_truth_vx"                       :  1.0,
+            "scaling_for_ground_truth_vy"                       :  1.0,
+            "scaling_for_ground_truth_omega"                    :  1.0,
+            "scaling_for_ground_truth_delta"                    :  1.0,
+            "scaling_for_road_progress_at_closest_point"        :  1.0,
+            "scaling_for_vx_sensor"                             :  1.0,
+            "scaling_for_distance_to_closest_point"             :  1.0,
+            "scaling_for_heading_angle_relative_to_line"        :  1.0,
+            "scaling_for_heading_angular_rate_gyro"             :  1.0,
+            "scaling_for_accel_in_body_frame_x"                 :  1.0,
+            "scaling_for_accel_in_body_frame_y"                 :  1.0,
+            "scaling_for_closest_point_coords_in_body_frame"    :  1.0,
+            "scaling_for_look_ahead_line_coords_in_body_frame"  :  1.0,
+            "scaling_for_road_curvature_at_closest_point"       :  1.0,
+            "scaling_for_look_ahead_road_curvatures"            :  1.0,
+            "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
+
+            "vx_sensor_bias"   : 0.0,
+            "vx_sensor_stddev" : 0.1,
+
+            "distance_to_closest_point_bias"    :  0.0,
+            "distance_to_closest_point_stddev"  :  0.05,
+
+            "heading_angle_relative_to_line_bias"    :  0.0,
+            "heading_angle_relative_to_line_stddev"  :  0.01,
+
+            "heading_angular_rate_gyro_bias"    :  0.0,
+            "heading_angular_rate_gyro_stddev"  :  0.0,
+
+            "closest_point_coords_in_body_frame_bias"    :  0.0,
+            "closest_point_coords_in_body_frame_stddev"  :  0.0,
+
+            "look_ahead_line_coords_in_body_frame_bias"    :  0.0,
+            "look_ahead_line_coords_in_body_frame_stddev"  :  0.0,
+
+            "road_curvature_at_closest_point_bias"    :  0.0,
+            "road_curvature_at_closest_point_stddev"  :  0.0,
+
+            "look_ahead_road_curvatures_bias"    :  0.0,
+            "look_ahead_road_curvatures_stddev"  :  0.0,
+
+            "look_ahead_line_coords_in_body_frame_distance"             :  100.0,
+            "look_ahead_line_coords_in_body_frame_num_points"           :  10,
+            "look_ahead_line_coords_in_body_frame_stddev_lateral"       :  0.0,
+            "look_ahead_line_coords_in_body_frame_stddev_longitudinal"  :  0.0,
+        }
+
+
+        # Set the observation parameters that are provided by the input argument
+        # Update defaults with provided params
+        processed_observation_parameters = {key: observation_parameters.get(key, default) for key, default in observation_parameters_defaults.items()}
+
+        # Put every observation parameter into a class variable using the
+        # key as the name for the class variable
+        for key, value in processed_observation_parameters.items():
+            setattr(self, key, value)
+
+
+
+        # OBSERVATION NAMES AND BOX-SPACE SPECIFICATIONS
+        # Specify the names for observations
+        observations_name_low_high_shape = [
+            ["ground_truth_px"                      , -np.inf    , np.inf    , (1,) ],
+            ["ground_truth_py"                      , -np.inf    , np.inf    , (1,) ],
+            ["ground_truth_theta"                   , -np.inf    , np.inf    , (1,) ],
+            ["ground_truth_vx"                      , -np.inf    , np.inf    , (1,) ],
+            ["ground_truth_vy"                      , -np.inf    , np.inf    , (1,) ],
+            ["ground_truth_omega"                   , -np.inf    , np.inf    , (1,) ],
+            ["ground_truth_delta"                   , -0.5*np.pi , 0.5*np.pi , (1,) ],
+            ["road_progress_at_closest_point"       , -np.inf    , np.inf    , (1,) ],
+            ["vx_sensor"                            , -np.inf    , np.inf    , (1,) ],
+            ["distance_to_closest_point"            , -np.inf    , np.inf    , (1,) ],
+            ["heading_angle_relative_to_line"       , -np.pi     , np.pi     , (1,) ],
+            ["heading_angular_rate_gyro"            , -np.inf    , np.inf    , (1,) ],
+            ["accel_in_body_frame_x"                , -np.inf    , np.inf    , (1,) ],
+            ["accel_in_body_frame_y"                , -np.inf    , np.inf    , (1,) ],
+            ["closest_point_coords_in_body_frame"   , -np.inf    , np.inf    , (2,) ],
+            ["look_ahead_line_coords_in_body_frame" , -np.inf    , np.inf    , (2,self.look_ahead_line_coords_in_body_frame_num_points) ],
+            ["road_curvature_at_closest_point"      , -np.inf    , np.inf    , (1,) ],
+            ["look_ahead_road_curvatures"           , -np.inf    , np.inf    , (self.look_ahead_line_coords_in_body_frame_num_points,) ],
+            ["gps_line_coords_in_world_frame"       , -np.inf    , np.inf    , (1,) ]
+        ]
+
+
+
+        # OBSERVATION SPACE
+        # Construct a normal dictionary for the sensor measurements
+        # that are to be included as observations.
+
+        # > Initialise an empty dictionary
+        obs_space_dict = {}
+        self.obs_dict_blank = {}
+        self.info_dict_blank = {}
+
+        # Iterate over the observation names
+        for obs_details in observations_name_low_high_shape:
+            # Extract the specs of this observation
+            obs_name  = obs_details[0]
+            obs_low   = obs_details[1]
+            obs_high  = obs_details[2]
+            obs_shape = obs_details[3]
+            # Get the "should include" string for this name
+            should_include_string = processed_observation_parameters.get("should_include_"+obs_name)
+            # Process for should include in observation
+            if should_include_string.lower() == "obs":
+                setattr(self, "should_include_obs_for_"+obs_name, True)
+                obs_space_dict.update({obs_name: spaces.Box(low=obs_low, high=obs_high, shape=obs_shape, dtype=np.float32)})
+                self.obs_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.float32)})
+            else:
+                setattr(self, "should_include_obs_for_"+obs_name, False)
+            # Process for should include in info dict
+            if should_include_string.lower() == "info":
+                setattr(self, "should_include_info_for_"+obs_name, True)
+                self.info_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.float32)})
+            else:
+                setattr(self, "should_include_info_for_"+obs_name, False)
+
+
+
+        # > Create the observation space
+        self.observation_space = spaces.Dict(obs_space_dict)
+
+
+        # LOOK-AHEAD QUERIES
+        # Based on the observation parameters, construct the progress queries
+        # that are used for getting look-ahead details about the line.
+        temp_increment = self.look_ahead_line_coords_in_body_frame_distance / self.look_ahead_line_coords_in_body_frame_num_points
+        self.look_ahead_progress_queries = progress_queries = np.linspace(temp_increment , self.look_ahead_line_coords_in_body_frame_distance, num=(self.look_ahead_line_coords_in_body_frame_num_points), endpoint=True)
+
+        # PROGRESS TRACKING
         # Initialize the "previous progress" variable to zero
         # > It is set to the correct value in the reset function
         self.previous_progress_at_closest_p = 0.0
@@ -243,7 +454,7 @@ class AutonomousDrivingEnv(gym.Env):
         # PROGRESS QUERIES:
         # Set the progress queries used for filling
         # the "info_dict" with look-ahead observations.
-        self.progress_queries = np.array([0.0,1.0,2.0,3.0,4.0,5.0], dtype=np.float32)
+        #self.progress_queries = np.array([0.0,1.0,2.0,3.0,4.0,5.0], dtype=np.float32)
 
         # ROAD CONDITION:
         # Set the road condition
@@ -267,7 +478,7 @@ class AutonomousDrivingEnv(gym.Env):
 
 
 
-    def _get_observation(self):
+    def _get_observation_and_info(self):
         """
         Puts the current state of the car in a dictionary
 
@@ -280,17 +491,135 @@ class AutonomousDrivingEnv(gym.Env):
         dictionary
             Containing keys for each state of the car
         """
-        return {
-            "px":    np.array([self.car.px], dtype=np.float32),
-            "py":    np.array([self.car.py], dtype=np.float32),
-            "theta": np.array([self.car.theta], dtype=np.float32),
-            "vx":    np.array([self.car.vx], dtype=np.float32),
-            "vy":    np.array([self.car.vy], dtype=np.float32),
-            "omega": np.array([self.car.omega], dtype=np.float32),
-            "delta": np.array([self.car.delta], dtype=np.float32),
-        }
+        # Initialise an empty
+        obs_dict  = self.obs_dict_blank.copy()
+        info_dict = self.info_dict_blank.copy()
 
-    def _get_info(self, progress_queries):
+        # Get the road info for the current pose of the car
+        # and at the "look_ahead_progress_queries"
+        road_info_dict = self._get_road_info(self.look_ahead_progress_queries)
+        #print(road_info_dict)
+
+        if (self.should_include_obs_for_ground_truth_px):
+            obs_dict["ground_truth_px"][0]  = self.car.px * self.scaling_for_ground_truth_px
+        if (self.should_include_info_for_ground_truth_px):
+            info_dict["ground_truth_px"][0] = self.car.px * self.scaling_for_ground_truth_px
+
+        if (self.should_include_obs_for_ground_truth_py):
+            obs_dict["ground_truth_py"][0]  = self.car.py * self.scaling_for_ground_truth_py
+        if (self.should_include_info_for_ground_truth_py):
+            info_dict["ground_truth_py"][0] = self.car.py * self.scaling_for_ground_truth_py
+
+        if (self.should_include_obs_for_ground_truth_theta):
+            obs_dict["ground_truth_theta"][0]  = self.car.theta * self.scaling_for_ground_truth_theta
+        if (self.should_include_info_for_ground_truth_theta):
+            info_dict["ground_truth_theta"][0] = self.car.theta * self.scaling_for_ground_truth_theta
+
+        if (self.should_include_obs_for_ground_truth_vx):
+            obs_dict["ground_truth_vx"][0]  = self.car.vx * self.scaling_for_ground_truth_vx
+        if (self.should_include_info_for_ground_truth_vx):
+            info_dict["ground_truth_vx"][0] = self.car.vx * self.scaling_for_ground_truth_vx
+
+        if (self.should_include_obs_for_ground_truth_vy):
+            obs_dict["ground_truth_vy"][0]  = self.car.vy * self.scaling_for_ground_truth_vy
+        if (self.should_include_info_for_ground_truth_vy):
+            info_dict["ground_truth_vy"][0] = self.car.vy * self.scaling_for_ground_truth_vy
+
+        if (self.should_include_obs_for_ground_truth_omega):
+            obs_dict["ground_truth_omega"][0]  = self.car.omega * self.scaling_for_ground_truth_omega
+        if (self.should_include_info_for_ground_truth_omega):
+            info_dict["ground_truth_omega"][0] = self.car.omega * self.scaling_for_ground_truth_omega
+
+        if (self.should_include_obs_for_ground_truth_delta):
+            obs_dict["ground_truth_delta"][0]  = self.car.delta * self.scaling_for_ground_truth_delta
+        if (self.should_include_info_for_ground_truth_delta):
+            info_dict["ground_truth_delta"][0] = self.car.delta * self.scaling_for_ground_truth_delta
+
+        road_progress_at_closest_point = road_info_dict["progress_at_closest_p"] * self.scaling_for_road_progress_at_closest_point
+        if (self.should_include_obs_for_road_progress_at_closest_point):
+            obs_dict["road_progress_at_closest_point"][0]  = road_progress_at_closest_point
+        if (self.should_include_info_for_road_progress_at_closest_point):
+            info_dict["road_progress_at_closest_point"][0] = road_progress_at_closest_point
+
+        vx_noise = np.random.normal(self.vx_sensor_bias, self.vx_sensor_stddev)
+        vx_sensor = (self.car.vx + vx_noise) * self.scaling_for_vx_sensor
+        if (self.should_include_obs_for_vx_sensor):
+            obs_dict["vx_sensor"][0]  = vx_sensor
+        if (self.should_include_info_for_vx_sensor):
+            info_dict["vx_sensor"][0] = vx_sensor
+
+        dist_to_line_noise = np.random.normal(self.distance_to_closest_point_bias, self.distance_to_closest_point_stddev)
+        dist_to_line = (road_info_dict["closest_distance"] * road_info_dict["side_of_the_road_line"] + dist_to_line_noise) * self.scaling_for_distance_to_closest_point
+        if (self.should_include_obs_for_distance_to_closest_point):
+            obs_dict["distance_to_closest_point"][0]  = dist_to_line
+        if (self.should_include_info_for_distance_to_closest_point):
+            info_dict["distance_to_closest_point"][0] = dist_to_line
+
+        heading_rel_to_line_noise = np.random.normal(self.heading_angle_relative_to_line_bias, self.heading_angle_relative_to_line_stddev)
+        heading_rel_to_line = (road_info_dict["road_angle_relative_to_body_frame_at_closest_p"] + heading_rel_to_line_noise) * self.scaling_for_heading_angle_relative_to_line
+        if (self.should_include_obs_for_heading_angle_relative_to_line):
+            obs_dict["heading_angle_relative_to_line"][0]  = heading_rel_to_line
+        if (self.should_include_info_for_heading_angle_relative_to_line):
+            info_dict["heading_angle_relative_to_line"][0] = heading_rel_to_line
+
+        heading_gyro_noise = np.random.normal(self.heading_angular_rate_gyro_bias, self.heading_angular_rate_gyro_stddev)
+        heading_gyro = (self.car.omega + heading_gyro_noise) * self.scaling_for_heading_angular_rate_gyro
+        if (self.should_include_obs_for_heading_angular_rate_gyro):
+            obs_dict["heading_angular_rate_gyro"][0]  = heading_gyro
+        if (self.should_include_info_for_heading_angular_rate_gyro):
+            info_dict["heading_angular_rate_gyro"][0] = heading_gyro
+
+        if (self.should_include_obs_for_accel_in_body_frame_x):
+            obs_dict["accel_in_body_frame_x"][0]  = 0.0
+        if (self.should_include_info_for_accel_in_body_frame_x):
+            info_dict["accel_in_body_frame_x"][0] = 0.0
+
+        if (self.should_include_obs_for_accel_in_body_frame_y):
+            obs_dict["accel_in_body_frame_y"][0]  = 0.0
+        if (self.should_include_info_for_accel_in_body_frame_y):
+            info_dict["accel_in_body_frame_y"][0] = 0.0
+
+        px_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
+        py_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
+        px_closest_in_body_frame = (road_info_dict["px_closest_in_body_frame"] + px_noise) * self.scaling_for_closest_point_coords_in_body_frame
+        py_closest_in_body_frame = (road_info_dict["py_closest_in_body_frame"] + py_noise) * self.scaling_for_closest_point_coords_in_body_frame
+        if (self.should_include_obs_for_closest_point_coords_in_body_frame):
+            obs_dict["closest_point_coords_in_body_frame"][0]  = px_closest_in_body_frame
+            obs_dict["closest_point_coords_in_body_frame"][1]  = py_closest_in_body_frame
+        if (self.should_include_info_for_closest_point_coords_in_body_frame):
+            info_dict["closest_point_coords_in_body_frame"][0] = px_closest_in_body_frame
+            info_dict["closest_point_coords_in_body_frame"][1] = py_closest_in_body_frame
+
+        look_ahead_line_coords_noise = np.array( np.random.normal(self.look_ahead_line_coords_in_body_frame_bias, self.look_ahead_line_coords_in_body_frame_stddev, (2,self.look_ahead_line_coords_in_body_frame_num_points)) , dtype=np.float32)
+        look_ahead_line_coords_in_body_frame = (np.transpose( np.array(road_info_dict["road_points_in_body_frame"], dtype=np.float32)) + look_ahead_line_coords_noise) * self.scaling_for_look_ahead_line_coords_in_body_frame
+        if (self.should_include_obs_for_look_ahead_line_coords_in_body_frame):
+            obs_dict["look_ahead_line_coords_in_body_frame"]  = look_ahead_line_coords_in_body_frame
+        if (self.should_include_info_for_look_ahead_line_coords_in_body_frame):
+            info_dict["look_ahead_line_coords_in_body_frame"] = look_ahead_line_coords_in_body_frame
+
+        road_curvature_noise = np.random.normal(self.road_curvature_at_closest_point_bias, self.road_curvature_at_closest_point_stddev)
+        road_curvature_at_closest_point = (road_info_dict["curvature_at_closest_p"] + road_curvature_noise) * self.scaling_for_road_curvature_at_closest_point
+        if (self.should_include_obs_for_road_curvature_at_closest_point):
+            obs_dict["road_curvature_at_closest_point"][0]  = road_curvature_at_closest_point
+        if (self.should_include_info_for_road_curvature_at_closest_point):
+            info_dict["road_curvature_at_closest_point"][0] = road_curvature_at_closest_point
+
+        look_ahead_road_curvatures_noise = np.array( np.random.normal(self.look_ahead_road_curvatures_bias, self.look_ahead_road_curvatures_stddev, (self.look_ahead_line_coords_in_body_frame_num_points,)) , dtype=np.float32)
+        look_ahead_road_curvatures = (np.array(road_info_dict["curvatures"], dtype=np.float32) + look_ahead_road_curvatures_noise) * self.scaling_for_look_ahead_road_curvatures
+        if (self.should_include_obs_for_look_ahead_road_curvatures):
+            obs_dict["look_ahead_road_curvatures"]  = look_ahead_road_curvatures
+        if (self.should_include_info_for_look_ahead_road_curvatures):
+            info_dict["look_ahead_road_curvatures"] = look_ahead_road_curvatures
+
+        if (self.should_include_obs_for_gps_line_coords_in_world_frame):
+            obs_dict["gps_line_coords_in_world_frame"][0]  = 0.0
+        if (self.should_include_info_for_gps_line_coords_in_world_frame):
+            info_dict["gps_line_coords_in_world_frame"][0] = 0.0
+
+        # Return the two dictionaries
+        return obs_dict, info_dict
+
+    def _get_road_info(self, progress_queries):
         """
         Gets the details of the upcoming section of road,
         relative to the car, into a dictionary.
@@ -305,38 +634,40 @@ class AutonomousDrivingEnv(gym.Env):
 
         Returns
         -------
-            info_dict : dictionary
+            road_info_dict : dictionary
                 Containing details for the road relative to the current
                 state of the car.
                 The properties of the info_dict are:
                 - "px", "py" : float
-                   World-frame (x,y) coordinate of the car.
+                    World-frame (x,y) coordinate of the car.
                 - "px_closest", "py_closest" : float
-                  World-frame (x,y) coordinate of the closest point on the road.
+                    World-frame (x,y) coordinate of the closest point on the road.
                 - "closest_distance" : float
-                  Euclidean distance from the car to the closest point on the road.
+                    Euclidean distance from the car to the closest point on the road.
                 - "side_of_the_road_line" : int
-                  The side of the road that the car is on (1:=left, -1=right).
+                    The side of the road that the car is on (1:=left, -1=right).
                 - "progress_at_closest_p" : float
-                  The total length of road from the start of the road to the closest point.
+                    The total length of road from the start of the road to the closest point.
                 - "road_angle_at_closest_p" : float
-                  The angle of the road at the closest point (relative to the world-frame x-axis).
+                    The angle of the road at the closest point (relative to the world-frame x-axis).
+                - "road_angles_relative_to_body_frame_at_closest_p" : float
+                    Angle of the road, relative to the body frame, at the closest point.
                 - "curvature_at_closest_p" : float
-                  The curvature of the road at the closest point.
+                    The curvature of the road at the closest point.
                 - "closest_element_idx" : int
-                  The index of the road element that is closest to the car.
+                    The index of the road element that is closest to the car.
                 - "progress_queries" : numpy array, 1-dimensional
-                  A repeat of the input parameter that specifies the values of progress-along-the-road,
-                  relative to the current position of the car, at which the observations should be generated. 
+                    A repeat of the input parameter that specifies the values of progress-along-the-road,
+                    relative to the current position of the car, at which the observations should be generated. 
                 - "road_points_in_body_frame" : numpy array, 2-dimensional
-                  (px,py) coordinates in the body frame of the progress query points.
-                  A 2-dimensional numpy array with: size = number of query points -by- 2.
+                    (px,py) coordinates in the body frame of the progress query points.
+                    A 2-dimensional numpy array with: size = number of query points -by- 2.
                 - "road_angles_relative_to_body_frame" : numpy array, 1-dimensional
-                  Angle of the road, relative to the body frame, at each of the progress query points.
-                  A 1-dimensional numpy array with: size = number of query points.
+                    Angle of the road, relative to the body frame, at each of the progress query points.
+                    A 1-dimensional numpy array with: size = number of query points.
                 - "curvatures" : numpy array, 1-dimensional
-                  Curvature of the road at each of the progress query points.
-                  A 1-dimensional numpy array with: size = number of query points.
+                    Curvature of the road at each of the progress query points.
+                    A 1-dimensional numpy array with: size = number of query points.
 
                 Units: all length in meters, all angles in radians.
         """
@@ -372,7 +703,7 @@ class AutonomousDrivingEnv(gym.Env):
                 Containing keys for each state of the car,
                 i.e., "px", "py", "theta", "vx", "vy", "omega", "delta"
             info_dict : dictionary
-                Same definition as for the "_get_info" function
+                Same definition as for the "_get_road_info" function
         """
 
         # Reset the seed of self.np_random
@@ -418,13 +749,16 @@ class AutonomousDrivingEnv(gym.Env):
         )
 
         # Get the observation
-        observation = self._get_observation()
+        observation, info_dict = self._get_observation_and_info()
 
         # Get the info dictionary
-        info_dict = self._get_info(progress_queries=self.progress_queries)
+        #info_dict = self._get_info(progress_queries=self.progress_queries)
 
-        # Set the reset point as the previous progress point
-        self.previous_progress_at_closest_p = info_dict["progress_at_closest_p"]
+        # Set the previous progress variable
+        if (self.should_include_obs_for_road_progress_at_closest_point):
+            self.previous_progress_at_closest_p = observation["road_progress_at_closest_point"][0]
+        if (self.should_include_info_for_road_progress_at_closest_point):
+            self.previous_progress_at_closest_p = info_dict["road_progress_at_closest_point"][0]
 
         # Render, if necessary
         #if self.render_mode in ["matplotlib"]:
@@ -442,17 +776,17 @@ class AutonomousDrivingEnv(gym.Env):
 
         Parameters
         ----------
-            action : dictionary
+            action : array
                 Should match the format defined by self.action_space,
                 i.e., with the following keys:
-                - "drive_command" : float
+                - action[0] : float
                   Drive command to the motor in percent.
                   100.0 (percent) means maximum force is applied to the
                   bicycle model in the forwards direction (i.e., in the
                   body frame positive x-direction)
                   -100.0 (percent) means maximum force is applied in the 
                   backwards direction (i.e., body frame negative x-direction)
-                - "delta_request" float
+                - action[1] : float
                   Requested steering angle (units: radians)
 
         Returns
@@ -466,8 +800,8 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Set the action request for bicycle model
         self.car.set_action_requests(
-            drive_command_request  = action["drive_command"],
-            delta_request = action["delta_request"],
+            drive_command_request  = action[0],
+            delta_request = action[1],
         )
 
         # Get the road condition
@@ -495,15 +829,27 @@ class AutonomousDrivingEnv(gym.Env):
         )
 
         # Get the observation
-        observation = self._get_observation()
+        observation, info_dict = self._get_observation_and_info()
 
         # Get the info dictionary
-        info_dict = self._get_info(progress_queries=self.progress_queries)
+        #info_dict = self._get_info(progress_queries=self.progress_queries)
         #info_dict = {}
+
+        # Extract the value of "progress at closest point"
+        if (self.should_include_obs_for_road_progress_at_closest_point):
+            progress_at_closest_point = observation["road_progress_at_closest_point"][0]
+        if (self.should_include_info_for_road_progress_at_closest_point):
+            progress_at_closest_point = info_dict["road_progress_at_closest_point"][0]
+
+        # Extract the value of "distance to closest_point"
+        if (self.should_include_obs_for_distance_to_closest_point):
+            distance_to_closest_point = observation["distance_to_closest_point"][0]
+        if (self.should_include_info_for_distance_to_closest_point):
+            distance_to_closest_point = info_dict["distance_to_closest_point"][0]
 
         # Compute the "terminated" flag
         terminated = False
-        if (info_dict["progress_at_closest_p"] >= self.total_road_length_for_termination):
+        if (progress_at_closest_point >= self.total_road_length_for_termination):
             #print("(prog,tot_len) = ( " + str(info_dict["progress_at_closest_p"]) + " , " + str(self.total_road_length) + " )" )
             terminated = True
 
@@ -511,9 +857,10 @@ class AutonomousDrivingEnv(gym.Env):
         truncated = False
 
         # Set the reward
-        # > As the change in progress in this step
-        reward = info_dict["progress_at_closest_p"] - self.previous_progress_at_closest_p
-        self.previous_progress_at_closest_p = info_dict["progress_at_closest_p"]
+        # > As the change in progress in this time-step
+        # > Minus a penalty for deviating from the line
+        reward = progress_at_closest_point - self.previous_progress_at_closest_p - distance_to_closest_point**2
+        self.previous_progress_at_closest_p = progress_at_closest_point
 
         # Render, if necessary
         #if self.render_mode in ["matplotlib"]:
@@ -567,8 +914,6 @@ class AutonomousDrivingEnv(gym.Env):
         #   matplotlib.pyploy.FuncAnimation
         return self.car_handles
 
-
-
     def render_matplotlib_plot_road(self):
         # Initialize the figure, if it does not already exist
         if (self.figure is None):
@@ -587,20 +932,59 @@ class AutonomousDrivingEnv(gym.Env):
         # Return the road handles
         return self.road_handles
 
-
-#env.unwrapped.render_matplotlib_plot_car(px,py,theta,delta)
-
-    def render_matplotlib_zoom_to(self, px, py, x_width, y_height):
-        if (self.figure is not None):
+    def render_matplotlib_zoom_to(self, px, py, x_width, y_height, axis_handle=None):
+        if (axis_handle is not None):
+            # Set the axis limits
+            axis_handle.set_xlim(xmin=px-0.5*x_width,  xmax=px+0.5*x_width)
+            axis_handle.set_ylim(ymin=py-0.5*y_height, ymax=py+0.5*y_height)
+        elif (self.figure is not None):
             # Set the axis limits
             self.axis.set_xlim(xmin=px-0.5*x_width,  xmax=px+0.5*x_width)
             self.axis.set_ylim(ymin=py-0.5*y_height, ymax=py+0.5*y_height)
 
+    def render_matplotlib_animation_of_trajectory(self, px_traj, py_traj, theta_traj, delta_traj, Ts, traj_increment=1, figure_title=None):
+        # Create a figure for the animation
+        fig_4_ani, axis_4_ani = plt.subplots(1, 1)
+        interval_btw_frames_ms = Ts * 1000
+
+        # Plot the road
+        self.road.render_road(axis_4_ani)
+
+        # Add a title
+        if (figure_title is None):
+            fig_4_ani.suptitle('Animation of car', fontsize=12)
+        else:
+            fig_4_ani.suptitle(figure_title, fontsize=12)
+
+        # Plot the start position
+        car_handles = self.car.render_car(axis_4_ani,px_traj[0],py_traj[0],theta_traj[0],delta_traj[0],scale=1.0)
+
+        # Zoom into the start position
+        self.render_matplotlib_zoom_to(px=px_traj[0],py=py_traj[0],x_width=20,y_height=20,axis_handle=axis_4_ani)
+
+        # Display that that animation creation is about to start
+        print("Now creating the animation, this may take some time.")
+
+        # Function for printing each individual frame of the animation
+        def animate_one_trajectory_frame(i):
+            # Update the car
+            self.car.render_car(axis_4_ani,px_traj[i],py_traj[i],theta_traj[i],delta_traj[i],scale=1.0, plot_handles=car_handles)
+            # Update the window
+            self.render_matplotlib_zoom_to(px=px_traj[i],py=py_traj[i],x_width=20,y_height=20,axis_handle=axis_4_ani)
+
+        # Create the list of trajectory indicies to render
+        traj_idx_to_render = range(0,len(px_traj),traj_increment)
+
+        # Create the animation
+        ani = animation.FuncAnimation(fig_4_ani, animate_one_trajectory_frame, frames=traj_idx_to_render, interval=interval_btw_frames_ms)
+
+        # Return the animation object
+        return ani
+
+
     #def render(self):
     #    if self.render_mode == "matplotlib":
     #        return self._render_frame()
-
-
 
     #def _render_frame(self):
     #    return
@@ -688,20 +1072,20 @@ class AutonomousDrivingEnv(gym.Env):
         self.B_Pacejka = Bp
         self.E_Pacejka = Ep
 
-    def set_progress_queries_for_generating_observations(self, progress_queries):
-        """
-        Parameters
-        ----------
-            "progress_queries" : numpy array, 1-dimensional
-            Specifies the values of progress-along-the-road,
-            relative to the current position of the car, at
-            which the observations should be generated. These
-            observations are returned in the "info_dict".
-            (Units: meters)
+    # def set_progress_queries_for_generating_observations(self, progress_queries):
+    #     """
+    #     Parameters
+    #     ----------
+    #         "progress_queries" : numpy array, 1-dimensional
+    #         Specifies the values of progress-along-the-road,
+    #         relative to the current position of the car, at
+    #         which the observations should be generated. These
+    #         observations are returned in the "info_dict".
+    #         (Units: meters)
 
-        Returns
-        -------
-        Nothing
-        """
-        # Get the progress query values
-        self.progress_queries = progress_queries
+    #     Returns
+    #     -------
+    #     Nothing
+    #     """
+    #     # Get the progress query values
+    #     self.progress_queries = progress_queries

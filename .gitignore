@@ -1,11 +1,15 @@
+# Ignore pdfs in the saved figures folder
+examples/saved_figures/*.pdf
+examples/saved_figures/*.gif
+
 # Ignore venv diretories
 *venv*/
 
 # Ignore .egg-info directory
 *.egg-info/
 
-# Ignore pdfs in the saved figures folder
-examples/saved_figures/*.pdf
+# Ignore .vscode directory
+*.vscode/
 
 # Ignore any __pycache__ directories
 **__pycache__**
