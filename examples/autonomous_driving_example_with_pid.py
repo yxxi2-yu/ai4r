@@ -3,8 +3,31 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import gymnasium
 import ai4rgym
+from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
+
+
+
+
+
+## ----------------------
+#  PRINT THE RUNNING PATH
+#  ----------------------
+import os
+# get the current working directory
+current_working_directory = os.getcwd()
+# print output to the console
+print('This script is running from the following path:')
+print(current_working_directory)
+
+
+
+## -----------------------------------
+#  SPECIFY THE PATH FOR SAVING FIGURES
+#  -----------------------------------
+path_for_saving_figures = 'examples/saved_figures'
 
 
 
@@ -25,7 +48,18 @@ bicycle_model_parameters = {
     "delta_request_max" : 45 * np.pi/180,
     "Ddelta_lower_limit" : -45 * np.pi/180,
     "Ddelta_upper_limit" :  45 * np.pi/180,
+    "v_transition_min" : 500.0 / 3.6,
+    "v_transition_max" : 600.0 / 3.6,
+    "body_len_f" : (0.55*2.875) * 1.5,
+    "body_len_r" : (0.45*2.875) * 1.5,
+    "body_width" : 2.50,
 }
+
+# Note:
+# The "v_transition_min" and "v_transition_max" specifications
+# have defaults values of 3.0 and 5.0 m/s respectively.
+# Set these values to be exceesively high to use a purely
+# kinematic model of the vehicle.
 
 # The model parameters above are based on a Telsa Model 3:
 # > Source: https://www.tesla.com/ownersmanual/model3/en_cn/GUID-E414862C-CFA1-4A0B-9548-BE21C32CAA58.html
@@ -48,10 +82,10 @@ bicycle_model_parameters = {
 # > {"type":"curved", "curvature":1/50.0, "angle_in_degrees":45.0}
 # > {"type":"curved", "curvature":1/50.0, "length":30.0}
 road_elements_list = [
-    {"type":"straight", "length":200.0},
-    {"type":"curved", "curvature":1/100.0, "angle_in_degrees":180.0},
-    {"type":"straight", "length":200.0},
-    {"type":"curved", "curvature":-1/50.0, "angle_in_degrees":180.0},
+    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":1/800.0, "angle_in_degrees":15.0},
+    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":-1/400.0, "angle_in_degrees":30.0},
     {"type":"straight", "length":100.0},
 ]
 
@@ -68,7 +102,7 @@ road_elements_list = [
 numerical_integration_parameters = {
     "method" : "rk4",
     "Ts" : 0.05,
-    #"num_steps_per_Ts" : 1,
+    "num_steps_per_Ts" : 1,
 }
 
 
@@ -108,6 +142,72 @@ initial_state_bounds = {
 
 
 
+## ----------------------------------
+#  SPECIFY THE OBSERVATION PARAMETERS
+#  ----------------------------------
+observation_parameters = {
+    "should_include_ground_truth_px"                       :  "info",
+    "should_include_ground_truth_py"                       :  "info",
+    "should_include_ground_truth_theta"                    :  "info",
+    "should_include_ground_truth_vx"                       :  "obs",
+    "should_include_ground_truth_vy"                       :  "obs",
+    "should_include_ground_truth_omega"                    :  "info",
+    "should_include_ground_truth_delta"                    :  "info",
+    "should_include_road_progress_at_closest_point"        :  "info",
+    "should_include_vx_sensor"                             :  "info",
+    "should_include_distance_to_closest_point"             :  "obs",
+    "should_include_heading_angle_relative_to_line"        :  "info",
+    "should_include_heading_angular_rate_gyro"             :  "info",
+    "should_include_closest_point_coords_in_body_frame"    :  "info",
+    "should_include_look_ahead_line_coords_in_body_frame"  :  "info",
+    "should_include_road_curvature_at_closest_point"       :  "obs",
+    "should_include_look_ahead_road_curvatures"            :  "obs",
+
+    "scaling_for_ground_truth_px"                       :  1.0,
+    "scaling_for_ground_truth_py"                       :  1.0,
+    "scaling_for_ground_truth_theta"                    :  1.0,
+    "scaling_for_ground_truth_vx"                       :  1.0,
+    "scaling_for_ground_truth_vy"                       :  1.0,
+    "scaling_for_ground_truth_omega"                    :  1.0,
+    "scaling_for_ground_truth_delta"                    :  1.0,
+    "scaling_for_road_progress_at_closest_point"        :  1.0,
+    "scaling_for_vx_sensor"                             :  1.0,
+    "scaling_for_distance_to_closest_point"             :  1.0,
+    "scaling_for_heading_angle_relative_to_line"        :  1.0,
+    "scaling_for_heading_angular_rate_gyro"             :  1.0,
+    "scaling_for_closest_point_coords_in_body_frame"    :  1.0,
+    "scaling_for_look_ahead_line_coords_in_body_frame"  :  1.0,
+    "scaling_for_road_curvature_at_closest_point"       :  1.0,
+    "scaling_for_look_ahead_road_curvatures"            :  1.0,
+
+    "vx_sensor_bias"    : 0.0,
+    "vx_sensor_stddev"  : 0.1,
+
+    "distance_to_closest_point_bias"    :  0.0,
+    "distance_to_closest_point_stddev"  :  0.1,
+
+    "heading_angle_relative_to_line_bias"    :  0.0,
+    "heading_angle_relative_to_line_stddev"  :  0.01,
+
+    "heading_angular_rate_gyro_bias"    :  0.0,
+    "heading_angular_rate_gyro_stddev"  :  0.01,
+
+    "closest_point_coords_in_body_frame_bias"    :  0.0,
+    "closest_point_coords_in_body_frame_stddev"  :  0.0,
+
+    "look_ahead_line_coords_in_body_frame_bias"    :  0.0,
+    "look_ahead_line_coords_in_body_frame_stddev"  :  0.0,
+
+    "road_curvature_at_closest_point_bias"    :  0.0,
+    "road_curvature_at_closest_point_stddev"  :  0.0,
+
+    "look_ahead_road_curvatures_bias"    :  0.0,
+    "look_ahead_road_curvatures_stddev"  :  0.0,
+
+    "look_ahead_line_coords_in_body_frame_distance"    :  100.0,
+    "look_ahead_line_coords_in_body_frame_num_points"  :  10,
+}
+
 ## ---------------------------------------------
 #  INITIALIZE THE AUTONOMOUS DRIVING ENVIRONMENT
 #  ---------------------------------------------
@@ -122,6 +222,7 @@ env = gymnasium.make(
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
     initial_state_bounds=initial_state_bounds,
+    observation_parameters=observation_parameters,
 )
 
 
@@ -139,7 +240,16 @@ env.unwrapped.render_matplotlib_plot_road()
 # Add a title
 env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
 # Save the figure
-env.unwrapped.figure.savefig('saved_figures/ad_road_minimal.pdf')
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_road.pdf')
+
+# Zoom into the start position
+env.unwrapped.render_matplotlib_zoom_to(px=0,py=0,x_width=20,y_height=20)
+# Add a title
+env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
+# Save the figure
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_zoom.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom.pdf')
 
 
 
@@ -149,7 +259,7 @@ env.unwrapped.figure.savefig('saved_figures/ad_road_minimal.pdf')
 
 # Specify simulation length by:
 # > Number of steps
-N_sim = 10000
+N_sim = 850
 # > Time increment per simulation step (units: seconds)
 Ts_sim = 0.05
 
@@ -157,18 +267,20 @@ Ts_sim = 0.05
 integration_method = "rk4"
 
 # Specify the "progress queries" to look ahead 50 meters
-progress_queries = np.array([100.0], dtype=np.float32)
+#progress_queries = np.array([100.0], dtype=np.float32)
 
 # Initialise array for storing (px,py) trajectory:
 px_traj    = np.empty([N_sim+1,], dtype=np.float32)
 py_traj    = np.empty([N_sim+1,], dtype=np.float32)
+theta_traj = np.empty([N_sim+1,], dtype=np.float32)
+delta_traj = np.empty([N_sim+1,], dtype=np.float32)
 
 # Set the integration method and Ts of the gymnasium
 env.unwrapped.set_integration_method(integration_method)
 env.unwrapped.set_integration_Ts(Ts_sim)
 
 # Set the progress queries
-env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
+#env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
 
 # Reset the gymnasium
 # > which also returns the first observation
@@ -176,8 +288,10 @@ observation, info_dict = env.reset()
 
 # Put the initial condition into the first entry of the state trajectory results
 this_time_index = 0
-px_traj[this_time_index] = observation["px"]
-py_traj[this_time_index] = observation["py"]
+px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
+py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
+theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
+delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
 
 # Display that we are starting this simulation run
 print("\n")
@@ -188,6 +302,7 @@ print("Now starting simulation.")
 run_terminated = False
 
 
+pid_policy = PIDPolicyForAutonomousDriving()
 
 # ITERATE OVER THE TIME STEPS OF THE SIMULATION
 for i_step in range(N_sim):
@@ -200,56 +315,7 @@ for i_step in range(N_sim):
     ## --------------------
     #  START OF POLICY CODE
 
-    # Get the "info_dict" observation of the curvature at the closest point on the road
-    curvature_at_closest = info_dict["curvature_at_closest_p"]
-    # Get the "info_dict" observation of the curvature at the progress queries to the line
-    look_ahead_curvature = info_dict["curvatures"][0]
-    
-    if (run_terminated):
-        # Zero speed reference after reaching the end of the road
-        speed_ref = 0.0
-    else:
-        # Speed reference relative to look-ahead curvature
-        if np.isnan(look_ahead_curvature):
-            speed_ref = 20.0/3.6
-        else:
-            curvature_for_speed_ref = abs(look_ahead_curvature)
-            if ( abs(curvature_at_closest) >= abs(look_ahead_curvature) ):
-                curvature_for_speed_ref = abs(curvature_at_closest)
-
-            speed_ref = 60.0/3.6 - curvature_for_speed_ref * (50.0) * (40/3.6)
-            speed_ref = max(speed_ref,20.0/3.6)
-
-    # Get the "info_dict" observation of the distance to the line
-    closest_distance = info_dict["closest_distance"]
-    side_of_the_road_line = info_dict["side_of_the_road_line"]
-
-    # Compute the speed of the car
-    speed = np.sqrt( observation["vx"][0]**2 + observation["vy"][0]**2 )
-    # Compute the error between the reference and actual speed
-    speed_error = speed_ref - speed
-    # Compute the drive command action
-    drive_command_raw = 2.0 * speed_error
-    # Clip the drive command action to be in the range [-100,100] percent
-    drive_command_clipped = max(-100.0, min(drive_command_raw, 100.0))
-
-    # Adjust the steering gain based on the speed
-    #kp_steering = 2.0
-    kp_steering = -(2.0 / (40.0/3.6)) * speed + 0.5 + ((2.0 / (40.0/3.6)) * (60.0/3.6))
-    kp_steering = max( 0.5 , min( 4.0, kp_steering ) )
-
-    # Compute the steering angle request action
-    delta_request = kp_steering*(np.pi/180.0) * closest_distance * (-side_of_the_road_line)
-
-    # Construct the action dictionary expected by the gymnasium
-    action = {
-        "drive_command" : drive_command_clipped,
-        "delta_request" : delta_request
-    }
-
-    # Zero steering after reaching the end of the road
-    if (run_terminated):
-        action["delta_request"] = 0.0
+    action = pid_policy.compute_action(observation, info_dict, run_terminated)
 
     #  END OF POLICY CODE
     ## --------------------
@@ -261,8 +327,10 @@ for i_step in range(N_sim):
 
     # Store the results
     this_time_index = this_time_index+1
-    px_traj[this_time_index] = observation["px"]
-    py_traj[this_time_index] = observation["py"]
+    px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
+    py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
+    theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
+    delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
 
     # Check whether the car reached the end of the road
     if terminated:
@@ -312,4 +380,19 @@ fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
 fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
 
 # Save the plot
-fig.savefig('saved_figures/ad_cartesian_coords_minimal.pdf') 
+fig.savefig(path_for_saving_figures + '/ad_cartesian_coords.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords.pdf')
+
+
+## ------------------------------------------------
+#  CREATE AN ANIMATION
+#  ------------------------------------------------
+ani = env.unwrapped.render_matplotlib_animation_of_trajectory(px_traj, py_traj, theta_traj, delta_traj, numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
+
+ani.save(path_for_saving_figures + '/ad_animation.gif')
+print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
+
+#from IPython.display import HTML
+#HTML(ani.to_jshtml())
+
+#plt.show()

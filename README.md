@@ -178,3 +178,33 @@ python examples/autonomous_driving_example.py
 
 To get started with any of the environment, see the respectively named example file for that environment.
 
+
+
+# Installation for Windows users using VSCode
+
+Running on Windows in VSCode:
+
+These instructions are take from this [VSCode tutorial page](https://code.visualstudio.com/docs/python/python-tutorial).
+
+1) Instll Python from [python.org](https://www.python.org/). Use the Download Python button that appears first on the page to download the latest version. For additional information about using Python on Windows, see [Using Python on Windows](https://docs.python.org/3.9/using/windows.html) at Python.org
+
+2) Install the [VSCode Python extension](https://marketplace.visualstudio.com/items?itemName=ms-python.python)
+
+3) Make a folder that you use as your workspace for the ai4rgym, for example, according to [this VSCode tutorial page](https://code.visualstudio.com/docs/python/python-tutorial#_start-vs-code-in-a-workspace-folder)
+
+4) From the VSCode Terminal clone the ai4rgym using the following command (within the folder created in Step 3):
+```
+git clone https://gitlab.unimelb.edu.au/ai4r/ai4r-gym.git
+```
+
+5) In VSCode, open the folder from Step 3 and then create a virtual environment in that workspace as per [this VSCode tutorial page](https://code.visualstudio.com/docs/python/python-tutorial#_create-a-virtual-environment).
+
+6) Once the virtual environment is finished being create, select the option that automatically pops up asking whether to install dependencies from "requirements.txt". If you don't see this, then use the Teminal in VSCode to install the requirements using the command:
+```
+py -m pip install -r requirements.txt
+```
+
+7) From the Terminal in VSCode, install the ai4rgym into the virtual environment using the command:
+```
+py -m pip install -e .
+```
