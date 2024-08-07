@@ -52,10 +52,10 @@ class PIDPolicyForAutonomousDriving:
         # Get the "info_dict" observation of the distance to the line
         #closest_distance = info_dict["closest_distance"]
         #side_of_the_road_line = info_dict["side_of_the_road_line"]
-        dist_to_line = observation["dist_to_line"][0]
+        dist_to_line = observation["distance_to_closest_point"][0]
 
         # Compute the speed of the car
-        speed = np.sqrt( observation["gt_vx"][0]**2 + observation["gt_vy"][0]**2 ) * np.sign(observation["gt_vx"][0])
+        speed = np.sqrt( observation["ground_truth_vx"][0]**2 + observation["ground_truth_vy"][0]**2 ) * np.sign(observation["ground_truth_vx"][0])
         # Compute the error between the reference and actual speed
         speed_error = speed_ref - speed
         # Compute the drive command action

@@ -145,50 +145,67 @@ initial_state_bounds = {
 ## ----------------------------------
 #  SPECIFY THE OBSERVATION PARAMETERS
 #  ----------------------------------
-
 observation_parameters = {
-    "should_include_obs_for_ground_truth_state"                    :  True,
-    "should_include_obs_for_vx_sensor"                             :  False,
-    "should_include_obs_for_closest_distance_to_line"              :  True,
-    "should_include_obs_for_heading_angle_relative_to_line"        :  False,
-    "should_include_obs_for_heading_angle_gyro"                    :  False,
-    "should_include_obs_for_accel_in_body_frame_x"                 :  False,
-    "should_include_obs_for_accel_in_body_frame_y"                 :  False,
-    "should_include_obs_for_look_ahead_line_coords_in_body_frame"  :  True,
-    "should_include_obs_for_look_ahead_road_curvatures"            :  True,
-    "should_include_obs_for_road_progress_at_closest_point"        :  True,
-    "should_include_obs_for_road_curvature_at_closest_point"       :  True,
-    "should_include_obs_for_gps_line_coords_in_world_frame"        :  False,
+    "should_include_ground_truth_px"                       :  "info",
+    "should_include_ground_truth_py"                       :  "info",
+    "should_include_ground_truth_theta"                    :  "info",
+    "should_include_ground_truth_vx"                       :  "obs",
+    "should_include_ground_truth_vy"                       :  "obs",
+    "should_include_ground_truth_omega"                    :  "info",
+    "should_include_ground_truth_delta"                    :  "info",
+    "should_include_road_progress_at_closest_point"        :  "info",
+    "should_include_vx_sensor"                             :  "info",
+    "should_include_distance_to_closest_point"             :  "obs",
+    "should_include_heading_angle_relative_to_line"        :  "info",
+    "should_include_heading_angular_rate_gyro"             :  "info",
+    "should_include_closest_point_coords_in_body_frame"    :  "info",
+    "should_include_look_ahead_line_coords_in_body_frame"  :  "info",
+    "should_include_road_curvature_at_closest_point"       :  "obs",
+    "should_include_look_ahead_road_curvatures"            :  "obs",
 
-    "scaling_for_ground_truth_state"                    :  1.0,
-    "scaling_for_vx_sensor"                             :  1.0,
-    "scaling_for_closest_distance_to_line"              :  1.0,
-    "scaling_for_heading_angle_relative_to_line"        :  1.0,
-    "scaling_for_heading_angle_gyro"                    :  1.0,
-    "scaling_for_accel_in_body_frame_x"                 :  1.0,
-    "scaling_for_accel_in_body_frame_y"                 :  1.0,
-    "scaling_for_look_ahead_line_coords_in_body_frame"  :  1.0,
-    "scaling_for_look_ahead_road_curvatures"            :  1.0,
+    "scaling_for_ground_truth_px"                       :  1.0,
+    "scaling_for_ground_truth_py"                       :  1.0,
+    "scaling_for_ground_truth_theta"                    :  1.0,
+    "scaling_for_ground_truth_vx"                       :  1.0,
+    "scaling_for_ground_truth_vy"                       :  1.0,
+    "scaling_for_ground_truth_omega"                    :  1.0,
+    "scaling_for_ground_truth_delta"                    :  1.0,
     "scaling_for_road_progress_at_closest_point"        :  1.0,
+    "scaling_for_vx_sensor"                             :  1.0,
+    "scaling_for_distance_to_closest_point"             :  1.0,
+    "scaling_for_heading_angle_relative_to_line"        :  1.0,
+    "scaling_for_heading_angular_rate_gyro"             :  1.0,
+    "scaling_for_closest_point_coords_in_body_frame"    :  1.0,
+    "scaling_for_look_ahead_line_coords_in_body_frame"  :  1.0,
     "scaling_for_road_curvature_at_closest_point"       :  1.0,
-    "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
+    "scaling_for_look_ahead_road_curvatures"            :  1.0,
 
-    "vx_sensor_bias"   : 0.0,
-    "vx_sensor_stddev" : 0.1,
+    "vx_sensor_bias"    : 0.0,
+    "vx_sensor_stddev"  : 0.1,
 
-    "closest_distance_to_line_bias"    :  0.0,
-    "closest_distance_to_line_stddev"  :  0.05,
+    "distance_to_closest_point_bias"    :  0.0,
+    "distance_to_closest_point_stddev"  :  0.1,
 
     "heading_angle_relative_to_line_bias"    :  0.0,
     "heading_angle_relative_to_line_stddev"  :  0.01,
 
-    "heading_angle_gyro_bias"    :  0.0,
-    "heading_angle_gyro_stddev"  :  0.0,
+    "heading_angular_rate_gyro_bias"    :  0.0,
+    "heading_angular_rate_gyro_stddev"  :  0.01,
 
-    "look_ahead_line_coords_in_body_frame_distance"             :  100.0,
-    "look_ahead_line_coords_in_body_frame_num_points"           :  10,
-    "look_ahead_line_coords_in_body_frame_stddev_lateral"       :  0.0,
-    "look_ahead_line_coords_in_body_frame_stddev_longitudinal"  :  0.0,
+    "closest_point_coords_in_body_frame_bias"    :  0.0,
+    "closest_point_coords_in_body_frame_stddev"  :  0.0,
+
+    "look_ahead_line_coords_in_body_frame_bias"    :  0.0,
+    "look_ahead_line_coords_in_body_frame_stddev"  :  0.0,
+
+    "road_curvature_at_closest_point_bias"    :  0.0,
+    "road_curvature_at_closest_point_stddev"  :  0.0,
+
+    "look_ahead_road_curvatures_bias"    :  0.0,
+    "look_ahead_road_curvatures_stddev"  :  0.0,
+
+    "look_ahead_line_coords_in_body_frame_distance"    :  100.0,
+    "look_ahead_line_coords_in_body_frame_num_points"  :  10,
 }
 
 ## ---------------------------------------------
@@ -223,16 +240,16 @@ env.unwrapped.render_matplotlib_plot_road()
 # Add a title
 env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
 # Save the figure
-env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_minimal.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_road_minimal.pdf')
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_road.pdf')
 
 # Zoom into the start position
 env.unwrapped.render_matplotlib_zoom_to(px=0,py=0,x_width=20,y_height=20)
 # Add a title
 env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
 # Save the figure
-env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_zoom_minimal.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom_minimal.pdf')
+env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_zoom.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom.pdf')
 
 
 
@@ -271,10 +288,10 @@ observation, info_dict = env.reset()
 
 # Put the initial condition into the first entry of the state trajectory results
 this_time_index = 0
-px_traj[this_time_index]    = observation["gt_px"][0]
-py_traj[this_time_index]    = observation["gt_py"][0]
-theta_traj[this_time_index] = observation["gt_theta"][0]
-delta_traj[this_time_index] = observation["gt_delta"][0]
+px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
+py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
+theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
+delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
 
 # Display that we are starting this simulation run
 print("\n")
@@ -310,10 +327,10 @@ for i_step in range(N_sim):
 
     # Store the results
     this_time_index = this_time_index+1
-    px_traj[this_time_index]    = observation["gt_px"][0]
-    py_traj[this_time_index]    = observation["gt_py"][0]
-    theta_traj[this_time_index] = observation["gt_theta"][0]
-    delta_traj[this_time_index] = observation["gt_delta"][0]
+    px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
+    py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
+    theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
+    delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
 
     # Check whether the car reached the end of the road
     if terminated:
@@ -363,8 +380,8 @@ fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
 fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
 
 # Save the plot
-fig.savefig(path_for_saving_figures + '/ad_cartesian_coords_minimal.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords_minimal.pdf')
+fig.savefig(path_for_saving_figures + '/ad_cartesian_coords.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords.pdf')
 
 
 ## ------------------------------------------------
@@ -372,8 +389,8 @@ print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords_minimal
 #  ------------------------------------------------
 ani = env.unwrapped.render_matplotlib_animation_of_trajectory(px_traj, py_traj, theta_traj, delta_traj, numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
 
-ani.save(path_for_saving_figures + '/ad_animation_minimal.gif')
-print('Saved animation: ' + path_for_saving_figures + '/ad_animation_minimal.gif')
+ani.save(path_for_saving_figures + '/ad_animation.gif')
+print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
 
 #from IPython.display import HTML
 #HTML(ani.to_jshtml())

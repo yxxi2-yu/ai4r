@@ -891,6 +891,8 @@ class Road:
                     World-frame (x,y) coordinate of the car.
                 - "px_closest", "py_closest" : float
                     World-frame (x,y) coordinate of the closest point on the road.
+                - "px_closest_in_body_frame", "py_closest_in_body_frame" : float
+                    Body-frame (x,y) coordinate of the closest point on the road.
                 - "closest_distance" : float
                     Euclidean distance from the car to the closest point on the road.
                 - "side_of_the_road_line" : int
@@ -935,7 +937,11 @@ class Road:
         # Convert the progression array to coordinates and angles along the upcoming section of road
         p_coords, p_angles = self.convert_progression_to_coordinates(prog_queries_from_start)
 
-        # Transform the points into the body frame of the given pose
+        # Transform the closes point into the body frame of the given pose
+        p_closest = np.array([[px_closest, py_closest]], dtype=np.float32)
+        p_closest_in_body_frame = Road.transform_points_2d( p_closest , px, py, theta)
+
+        # Transform the progress points into the body frame of the given pose
         p_coords_in_body_frame = Road.transform_points_2d( p_coords , px, py, theta)
 
         # Shift the angles to be relative to the body frame of the given pose
@@ -950,6 +956,8 @@ class Road:
             "py" : py,
             "px_closest" : px_closest,
             "py_closest" : py_closest,
+            "px_closest_in_body_frame" : p_closest_in_body_frame[0,0],
+            "py_closest_in_body_frame" : p_closest_in_body_frame[0,1],
             "closest_distance" : closest_distance,
             "side_of_the_road_line" : side_of_the_road_line,
             "progress_at_closest_p" : progress_at_closest_p,
