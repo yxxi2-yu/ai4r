@@ -103,6 +103,7 @@ class AutonomousDrivingEnv(gym.Env):
         bicycle_model_parameters,
         road_elements_list,
         numerical_integration_parameters,
+        truncation_parameters,
         initial_state_bounds,
         observation_parameters,
     ):
@@ -123,7 +124,7 @@ class AutonomousDrivingEnv(gym.Env):
                 Specifies the road
 
             numerical_integration_parameters : dictionary
-                Specifies the inegration details used in the "step" function.
+                Specifies the integration details used in the "step" function.
                 This dictionary should contain the folllowing keys:
                 - method : string
                     The numerical integration method that is used when simulating the
@@ -133,6 +134,20 @@ class AutonomousDrivingEnv(gym.Env):
                     by each time the "step" function is called.
                 - num_steps_per_Ts : int
                     The number of step that "integration_Ts" is split up into.
+
+            truncation_parameters : dictionary
+                Specifies the bounds for when to raise the truncation flag.
+                This dictionary should contain the folllowing keys:
+                - speed_lower_bound : float
+                    Truncation is flagged when the speed of the car drops below
+                    this lower bound value. If this is set to zero, then there is
+                    effecively no lower bound.
+                - speed_upper_bound : float
+                    Truncation is flagged when the speed of the car goes above
+                    this upper bound value.
+                - distance_to_closest_point_upper_bound : float
+                    Truncation is flagged when the car deviates from the road line
+                    by more thatn this upper bound value.
 
             initial_state_bounds : dictionary
                 Specifies the minimum and maximum (i.e., lower and upper bounds) us for
@@ -268,6 +283,12 @@ class AutonomousDrivingEnv(gym.Env):
         self.integration_method = numerical_integration_parameters["method"]
         self.integration_Ts = numerical_integration_parameters["Ts"]
         self.integration_num_steps_per_Ts =  1  if ("num_steps_per_Ts" not in numerical_integration_parameters) else numerical_integration_parameters["num_steps_per_Ts"]
+
+        # TRUNCATION SPECIFICATIONS:
+        # Set the truncation parameters
+        self.truncation_speed_lower_bound  =  0.0          if ("speed_lower_bound" not in truncation_parameters) else truncation_parameters["speed_lower_bound"]
+        self.truncation_speed_upper_bound  =  (200.0/3.6)  if ("speed_upper_bound" not in truncation_parameters) else truncation_parameters["speed_upper_bound"]
+        self.truncation_distance_to_closest_point_upper_bound  = 20.0  if ("distance_to_closest_point_upper_bound" not in truncation_parameters) else truncation_parameters["distance_to_closest_point_upper_bound"]
 
         # INITIAL CONDITION SPECIFICATIONS:
         # Set the initial condition bound
@@ -451,6 +472,31 @@ class AutonomousDrivingEnv(gym.Env):
         # > It is set to the correct value in the reset function
         self.previous_progress_at_closest_p = 0.0
 
+        # GROUND TRUTH RECORDING
+        # Initialize the "current_ground_truth" dictionary
+        # > This is used to ensure access to these quantities
+        #   without noise or scaling
+        self.current_ground_truth = {
+            "px"     :  0.0,
+            "py"     :  0.0,
+            "theta"  :  0.0,
+            "vx"     :  0.0,
+            "vy"     :  0.0,
+            "omega"  :  0.0,
+            "delta"  :  0.0,
+
+            "road_progress_at_closest_point"   :  0.0,
+            "distance_to_closest_point"        :  0.0,
+            "heading_angle_relative_to_line"   :  0.0,
+            "road_curvature_at_closest_point"  :  0.0,
+
+            "px_closest"  :  0.0,
+            "py_closest"  :  0.0,
+
+            "px_closest_in_body_frame"  :  0.0,
+            "py_closest_in_body_frame"  :  0.0,
+        }
+
         # PROGRESS QUERIES:
         # Set the progress queries used for filling
         # the "info_dict" with look-ahead observations.
@@ -478,7 +524,7 @@ class AutonomousDrivingEnv(gym.Env):
 
 
 
-    def _get_observation_and_info(self):
+    def _get_observation_and_info_and_update_ground_truth(self):
         """
         Puts the current state of the car in a dictionary
 
@@ -491,7 +537,7 @@ class AutonomousDrivingEnv(gym.Env):
         dictionary
             Containing keys for each state of the car
         """
-        # Initialise an empty
+        # Initialise empty dictionaries
         obs_dict  = self.obs_dict_blank.copy()
         info_dict = self.info_dict_blank.copy()
 
@@ -500,6 +546,56 @@ class AutonomousDrivingEnv(gym.Env):
         road_info_dict = self._get_road_info(self.look_ahead_progress_queries)
         #print(road_info_dict)
 
+        # Update the dictionary of ground truth values
+        self.current_ground_truth["px"]     =  self.car.px
+        self.current_ground_truth["py"]     =  self.car.py
+        self.current_ground_truth["theta"]  =  self.car.theta
+        self.current_ground_truth["vx"]     =  self.car.vx
+        self.current_ground_truth["vy"]     =  self.car.vy
+        self.current_ground_truth["omega"]  =  self.car.omega
+        self.current_ground_truth["delta"]  =  self.car.omega
+
+        self.current_ground_truth["road_progress_at_closest_point"]   =  road_info_dict["progress_at_closest_p"]
+        self.current_ground_truth["distance_to_closest_point"]        =  (road_info_dict["closest_distance"] * road_info_dict["side_of_the_road_line"])
+        self.current_ground_truth["heading_angle_relative_to_line"]   =  road_info_dict["road_angle_relative_to_body_frame_at_closest_p"]
+        self.current_ground_truth["road_curvature_at_closest_point"]  =  road_info_dict["curvature_at_closest_p"]
+
+        self.current_ground_truth["px_closest"]  =  road_info_dict["px_closest"]
+        self.current_ground_truth["py_closest"]  =  road_info_dict["py_closest"]
+
+        self.current_ground_truth["px_closest_in_body_frame"]  =  road_info_dict["px_closest_in_body_frame"]
+        self.current_ground_truth["py_closest_in_body_frame"]  =  road_info_dict["py_closest_in_body_frame"]
+
+        # Compute the measurement values
+        road_progress_at_closest_point = road_info_dict["progress_at_closest_p"] * self.scaling_for_road_progress_at_closest_point
+
+        vx_noise = np.random.normal(self.vx_sensor_bias, self.vx_sensor_stddev)
+        vx_sensor = (self.car.vx + vx_noise) * self.scaling_for_vx_sensor
+
+        dist_to_line_noise = np.random.normal(self.distance_to_closest_point_bias, self.distance_to_closest_point_stddev)
+        dist_to_line = (road_info_dict["closest_distance"] * road_info_dict["side_of_the_road_line"] + dist_to_line_noise) * self.scaling_for_distance_to_closest_point
+
+        heading_rel_to_line_noise = np.random.normal(self.heading_angle_relative_to_line_bias, self.heading_angle_relative_to_line_stddev)
+        heading_rel_to_line = (road_info_dict["road_angle_relative_to_body_frame_at_closest_p"] + heading_rel_to_line_noise) * self.scaling_for_heading_angle_relative_to_line
+
+        heading_gyro_noise = np.random.normal(self.heading_angular_rate_gyro_bias, self.heading_angular_rate_gyro_stddev)
+        heading_gyro = (self.car.omega + heading_gyro_noise) * self.scaling_for_heading_angular_rate_gyro
+
+        px_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
+        py_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
+        px_closest_in_body_frame = (road_info_dict["px_closest_in_body_frame"] + px_noise) * self.scaling_for_closest_point_coords_in_body_frame
+        py_closest_in_body_frame = (road_info_dict["py_closest_in_body_frame"] + py_noise) * self.scaling_for_closest_point_coords_in_body_frame
+
+        look_ahead_line_coords_noise = np.array( np.random.normal(self.look_ahead_line_coords_in_body_frame_bias, self.look_ahead_line_coords_in_body_frame_stddev, (2,self.look_ahead_line_coords_in_body_frame_num_points)) , dtype=np.float32)
+        look_ahead_line_coords_in_body_frame = (np.transpose( np.array(road_info_dict["road_points_in_body_frame"], dtype=np.float32)) + look_ahead_line_coords_noise) * self.scaling_for_look_ahead_line_coords_in_body_frame
+
+        road_curvature_noise = np.random.normal(self.road_curvature_at_closest_point_bias, self.road_curvature_at_closest_point_stddev)
+        road_curvature_at_closest_point = (road_info_dict["curvature_at_closest_p"] + road_curvature_noise) * self.scaling_for_road_curvature_at_closest_point
+
+        look_ahead_road_curvatures_noise = np.array( np.random.normal(self.look_ahead_road_curvatures_bias, self.look_ahead_road_curvatures_stddev, (self.look_ahead_line_coords_in_body_frame_num_points,)) , dtype=np.float32)
+        look_ahead_road_curvatures = (np.array(road_info_dict["curvatures"], dtype=np.float32) + look_ahead_road_curvatures_noise) * self.scaling_for_look_ahead_road_curvatures
+
+        # Put the measurements values into the appropriate dictionary
         if (self.should_include_obs_for_ground_truth_px):
             obs_dict["ground_truth_px"][0]  = self.car.px * self.scaling_for_ground_truth_px
         if (self.should_include_info_for_ground_truth_px):
@@ -535,35 +631,26 @@ class AutonomousDrivingEnv(gym.Env):
         if (self.should_include_info_for_ground_truth_delta):
             info_dict["ground_truth_delta"][0] = self.car.delta * self.scaling_for_ground_truth_delta
 
-        road_progress_at_closest_point = road_info_dict["progress_at_closest_p"] * self.scaling_for_road_progress_at_closest_point
         if (self.should_include_obs_for_road_progress_at_closest_point):
             obs_dict["road_progress_at_closest_point"][0]  = road_progress_at_closest_point
         if (self.should_include_info_for_road_progress_at_closest_point):
             info_dict["road_progress_at_closest_point"][0] = road_progress_at_closest_point
 
-        vx_noise = np.random.normal(self.vx_sensor_bias, self.vx_sensor_stddev)
-        vx_sensor = (self.car.vx + vx_noise) * self.scaling_for_vx_sensor
         if (self.should_include_obs_for_vx_sensor):
             obs_dict["vx_sensor"][0]  = vx_sensor
         if (self.should_include_info_for_vx_sensor):
             info_dict["vx_sensor"][0] = vx_sensor
 
-        dist_to_line_noise = np.random.normal(self.distance_to_closest_point_bias, self.distance_to_closest_point_stddev)
-        dist_to_line = (road_info_dict["closest_distance"] * road_info_dict["side_of_the_road_line"] + dist_to_line_noise) * self.scaling_for_distance_to_closest_point
         if (self.should_include_obs_for_distance_to_closest_point):
             obs_dict["distance_to_closest_point"][0]  = dist_to_line
         if (self.should_include_info_for_distance_to_closest_point):
             info_dict["distance_to_closest_point"][0] = dist_to_line
 
-        heading_rel_to_line_noise = np.random.normal(self.heading_angle_relative_to_line_bias, self.heading_angle_relative_to_line_stddev)
-        heading_rel_to_line = (road_info_dict["road_angle_relative_to_body_frame_at_closest_p"] + heading_rel_to_line_noise) * self.scaling_for_heading_angle_relative_to_line
         if (self.should_include_obs_for_heading_angle_relative_to_line):
             obs_dict["heading_angle_relative_to_line"][0]  = heading_rel_to_line
         if (self.should_include_info_for_heading_angle_relative_to_line):
             info_dict["heading_angle_relative_to_line"][0] = heading_rel_to_line
 
-        heading_gyro_noise = np.random.normal(self.heading_angular_rate_gyro_bias, self.heading_angular_rate_gyro_stddev)
-        heading_gyro = (self.car.omega + heading_gyro_noise) * self.scaling_for_heading_angular_rate_gyro
         if (self.should_include_obs_for_heading_angular_rate_gyro):
             obs_dict["heading_angular_rate_gyro"][0]  = heading_gyro
         if (self.should_include_info_for_heading_angular_rate_gyro):
@@ -579,10 +666,6 @@ class AutonomousDrivingEnv(gym.Env):
         if (self.should_include_info_for_accel_in_body_frame_y):
             info_dict["accel_in_body_frame_y"][0] = 0.0
 
-        px_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
-        py_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
-        px_closest_in_body_frame = (road_info_dict["px_closest_in_body_frame"] + px_noise) * self.scaling_for_closest_point_coords_in_body_frame
-        py_closest_in_body_frame = (road_info_dict["py_closest_in_body_frame"] + py_noise) * self.scaling_for_closest_point_coords_in_body_frame
         if (self.should_include_obs_for_closest_point_coords_in_body_frame):
             obs_dict["closest_point_coords_in_body_frame"][0]  = px_closest_in_body_frame
             obs_dict["closest_point_coords_in_body_frame"][1]  = py_closest_in_body_frame
@@ -590,22 +673,16 @@ class AutonomousDrivingEnv(gym.Env):
             info_dict["closest_point_coords_in_body_frame"][0] = px_closest_in_body_frame
             info_dict["closest_point_coords_in_body_frame"][1] = py_closest_in_body_frame
 
-        look_ahead_line_coords_noise = np.array( np.random.normal(self.look_ahead_line_coords_in_body_frame_bias, self.look_ahead_line_coords_in_body_frame_stddev, (2,self.look_ahead_line_coords_in_body_frame_num_points)) , dtype=np.float32)
-        look_ahead_line_coords_in_body_frame = (np.transpose( np.array(road_info_dict["road_points_in_body_frame"], dtype=np.float32)) + look_ahead_line_coords_noise) * self.scaling_for_look_ahead_line_coords_in_body_frame
         if (self.should_include_obs_for_look_ahead_line_coords_in_body_frame):
             obs_dict["look_ahead_line_coords_in_body_frame"]  = look_ahead_line_coords_in_body_frame
         if (self.should_include_info_for_look_ahead_line_coords_in_body_frame):
             info_dict["look_ahead_line_coords_in_body_frame"] = look_ahead_line_coords_in_body_frame
 
-        road_curvature_noise = np.random.normal(self.road_curvature_at_closest_point_bias, self.road_curvature_at_closest_point_stddev)
-        road_curvature_at_closest_point = (road_info_dict["curvature_at_closest_p"] + road_curvature_noise) * self.scaling_for_road_curvature_at_closest_point
         if (self.should_include_obs_for_road_curvature_at_closest_point):
             obs_dict["road_curvature_at_closest_point"][0]  = road_curvature_at_closest_point
         if (self.should_include_info_for_road_curvature_at_closest_point):
             info_dict["road_curvature_at_closest_point"][0] = road_curvature_at_closest_point
 
-        look_ahead_road_curvatures_noise = np.array( np.random.normal(self.look_ahead_road_curvatures_bias, self.look_ahead_road_curvatures_stddev, (self.look_ahead_line_coords_in_body_frame_num_points,)) , dtype=np.float32)
-        look_ahead_road_curvatures = (np.array(road_info_dict["curvatures"], dtype=np.float32) + look_ahead_road_curvatures_noise) * self.scaling_for_look_ahead_road_curvatures
         if (self.should_include_obs_for_look_ahead_road_curvatures):
             obs_dict["look_ahead_road_curvatures"]  = look_ahead_road_curvatures
         if (self.should_include_info_for_look_ahead_road_curvatures):
@@ -672,6 +749,17 @@ class AutonomousDrivingEnv(gym.Env):
                 Units: all length in meters, all angles in radians.
         """
         return self.road.road_info_at_given_pose_and_progress_queries(px=self.car.px, py=self.car.py, theta=self.car.theta, progress_queries=progress_queries)
+
+
+
+    def undo_scaling(self, dict):
+        # Take a copy so are not to change the input dictionary
+        unscaled_dict = dict.copy()
+        # Unscale the value for each key in the dictionary
+        for key, value in dict.items():
+            unscaled_dict.update({key : (value / getattr(self, "scaling_for_"+key))})
+        # Return the unscaled dictionary
+        return unscaled_dict
 
 
 
@@ -749,20 +837,13 @@ class AutonomousDrivingEnv(gym.Env):
         )
 
         # Get the observation
-        observation, info_dict = self._get_observation_and_info()
-
-        # Get the info dictionary
-        #info_dict = self._get_info(progress_queries=self.progress_queries)
+        observation, info_dict = self._get_observation_and_info_and_update_ground_truth()
 
         # Set the previous progress variable
-        if (self.should_include_obs_for_road_progress_at_closest_point):
-            self.previous_progress_at_closest_p = observation["road_progress_at_closest_point"][0]
-        if (self.should_include_info_for_road_progress_at_closest_point):
-            self.previous_progress_at_closest_p = info_dict["road_progress_at_closest_point"][0]
+        self.previous_progress_at_closest_p = self.current_ground_truth["road_progress_at_closest_point"]
 
         # Render, if necessary
-        #if self.render_mode in ["matplotlib"]:
-        #    self._render_frame()
+        # ...
 
         # Return the observation and info dictionary
         return observation, info_dict
@@ -816,8 +897,6 @@ class AutonomousDrivingEnv(gym.Env):
             Bp = self.B_Pacejka
             Ep = self.E_Pacejka
 
-
-
         # Perform one integration step
         self.car.perform_integration_step(
             Ts = self.integration_Ts,
@@ -829,23 +908,16 @@ class AutonomousDrivingEnv(gym.Env):
         )
 
         # Get the observation
-        observation, info_dict = self._get_observation_and_info()
-
-        # Get the info dictionary
-        #info_dict = self._get_info(progress_queries=self.progress_queries)
-        #info_dict = {}
+        observation, info_dict = self._get_observation_and_info_and_update_ground_truth()
 
         # Extract the value of "progress at closest point"
-        if (self.should_include_obs_for_road_progress_at_closest_point):
-            progress_at_closest_point = observation["road_progress_at_closest_point"][0]
-        if (self.should_include_info_for_road_progress_at_closest_point):
-            progress_at_closest_point = info_dict["road_progress_at_closest_point"][0]
+        progress_at_closest_point = self.current_ground_truth["road_progress_at_closest_point"]
 
-        # Extract the value of "distance to closest_point"
-        if (self.should_include_obs_for_distance_to_closest_point):
-            distance_to_closest_point = observation["distance_to_closest_point"][0]
-        if (self.should_include_info_for_distance_to_closest_point):
-            distance_to_closest_point = info_dict["distance_to_closest_point"][0]
+        # Extract the value of "distance to closest point"
+        distance_to_closest_point = self.current_ground_truth["distance_to_closest_point"]
+
+        # Compute the speed of the car
+        car_speed = np.sqrt(self.car.vx**2 + self.car.vy**2)
 
         # Compute the "terminated" flag
         terminated = False
@@ -853,13 +925,31 @@ class AutonomousDrivingEnv(gym.Env):
             #print("(prog,tot_len) = ( " + str(info_dict["progress_at_closest_p"]) + " , " + str(self.total_road_length) + " )" )
             terminated = True
 
-        # Set the truncated flag
+        # Compute the "truncated" flag
         truncated = False
+        # > Truncate for being outside of the speed range
+        if (car_speed > self.truncation_speed_upper_bound):
+            truncated = True
+        if (car_speed < self.truncation_speed_lower_bound):
+            truncated = True
+        # > Truncate for deviating too much from the line
+        if (abs(distance_to_closest_point) > self.truncation_distance_to_closest_point_upper_bound):
+            truncated = True
 
         # Set the reward
-        # > As the change in progress in this time-step
-        # > Minus a penalty for deviating from the line
-        reward = progress_at_closest_point - self.previous_progress_at_closest_p - distance_to_closest_point**2
+        # > Reward positive change in progress in this time-step
+        progress_reward = progress_at_closest_point - self.previous_progress_at_closest_p
+        # > Penalize deviating from the line
+        deviation_reward = -distance_to_closest_point**2
+        # > Penalize deviating from the init_condition speed range
+        speed_reward = 0
+        if (car_speed <= self.vx_init_min):
+            speed_reward = (car_speed-self.vx_init_min)**2
+        if (car_speed >= self.vx_init_max):
+            speed_reward = (car_speed-self.vx_init_max)**2
+
+        # Sum together the reward components
+        reward = progress_reward + 10.0 * deviation_reward + 5.0 * speed_reward
         self.previous_progress_at_closest_p = progress_at_closest_point
 
         # Render, if necessary

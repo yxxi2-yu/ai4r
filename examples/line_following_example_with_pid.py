@@ -83,9 +83,9 @@ bicycle_model_parameters = {
 # > {"type":"curved", "curvature":1/50.0, "length":30.0}
 road_elements_list = [
     {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":1/800.0, "angle_in_degrees":15.0},
+    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":10.0},
     {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":-1/400.0, "angle_in_degrees":30.0},
+    {"type":"curved", "curvature":-1/2000.0, "angle_in_degrees":10.0},
     {"type":"straight", "length":100.0},
 ]
 
@@ -103,6 +103,17 @@ numerical_integration_parameters = {
     "method" : "rk4",
     "Ts" : 0.05,
     "num_steps_per_Ts" : 1,
+}
+
+
+
+## ----------------------------------
+#  SPECIFY THE TRUNCATION PARAMETERS
+#  ----------------------------------
+truncation_parameters = {
+    "speed_lower_bound"  :  (10.0/3.6),
+    "speed_upper_bound"  :  (200.0/3.6),
+    "distance_to_closest_point_upper_bound"  :  20.0,
 }
 
 
@@ -221,6 +232,7 @@ env = gymnasium.make(
     bicycle_model_parameters=bicycle_model_parameters,
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
+    truncation_parameters=truncation_parameters,
     initial_state_bounds=initial_state_bounds,
     observation_parameters=observation_parameters,
 )
