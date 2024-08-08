@@ -272,88 +272,13 @@ print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom.pdf')
 # Specify simulation length by:
 # > Number of steps
 N_sim = 850
-# > Time increment per simulation step (units: seconds)
-Ts_sim = 0.05
 
-# Specify the integration method to simulate
-integration_method = "rk4"
-
-# Specify the "progress queries" to look ahead 50 meters
-#progress_queries = np.array([100.0], dtype=np.float32)
-
-# Initialise array for storing (px,py) trajectory:
-px_traj    = np.empty([N_sim+1,], dtype=np.float32)
-py_traj    = np.empty([N_sim+1,], dtype=np.float32)
-theta_traj = np.empty([N_sim+1,], dtype=np.float32)
-delta_traj = np.empty([N_sim+1,], dtype=np.float32)
-
-# Set the integration method and Ts of the gymnasium
-env.unwrapped.set_integration_method(integration_method)
-env.unwrapped.set_integration_Ts(Ts_sim)
-
-# Set the progress queries
-#env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
-
-# Reset the gymnasium
-# > which also returns the first observation
-observation, info_dict = env.reset()
-
-# Put the initial condition into the first entry of the state trajectory results
-this_time_index = 0
-px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
-py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
-theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
-delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
-
-# Display that we are starting this simulation run
-print("\n")
-print("Now starting simulation.")
-
-# Initialize the flag to when the car reaches
-# the end of the road
-run_terminated = False
-
-
+# Create the policy
 pid_policy = PIDPolicyForAutonomousDriving()
 
-# ITERATE OVER THE TIME STEPS OF THE SIMULATION
-for i_step in range(N_sim):
+# Run the simulation
+sim_time_series_results = env.unwrapped.simulate_policy(N_sim, pid_policy)
 
-    # Set the road condition
-    env.unwrapped.set_road_condition(road_condition="wet")
-
-
-
-    ## --------------------
-    #  START OF POLICY CODE
-
-    action = pid_policy.compute_action(observation, info_dict, run_terminated)
-
-    #  END OF POLICY CODE
-    ## --------------------
-
-
-
-    # Step forward the gymnasium
-    observation, reward, terminated, truncated, info_dict = env.step(action)
-
-    # Store the results
-    this_time_index = this_time_index+1
-    px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
-    py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
-    theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
-    delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
-
-    # Check whether the car reached the end of the road
-    if terminated:
-        if not(run_terminated):
-            run_terminated = True
-
-# FINISHED ITERATING OVER THE SIMULATION TIME
-
-# Display that the simulation is finished
-print("Simulation finished")
-print("\n")
 
 
 ## ------------------------------------------------
@@ -370,7 +295,7 @@ env.unwrapped.road.render_road(axs)
 legend_lines = []
 
 # Plot the (px,py) trajectory
-this_line, = axs.plot(px_traj,py_traj)
+this_line, = axs.plot(sim_time_series_results["px"],sim_time_series_results["py"])
 # > Add the legend entry
 this_line.set_label("trajectory")
 legend_lines.append(this_line)
@@ -397,9 +322,96 @@ print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords.pdf')
 
 
 ## ------------------------------------------------
+#  PLOT THE RESULTS - TIME SERIES
+#  ------------------------------------------------
+
+# Open the figure
+fig, axs = plt.subplots(4, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
+
+this_ax_idx = -1
+
+# Plot the reward time series
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["reward"])
+# > Add the legend entry
+this_line.set_label("reward")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('reward', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
+
+
+# Plot the "distance to line" time series
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["distance_to_closest_point"])
+# > Add the legend entry
+this_line.set_label("dist to line")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('dist [meters]', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
+
+
+# Plot the "drive command" time series
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["drive_command"])
+# > Add the legend entry
+this_line.set_label("drive command")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('drive [%]', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
+
+
+# Plot the "drive command" time series
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["delta_request"]*180.0/3.141)
+# > Add the legend entry
+this_line.set_label("delta request")
+legend_lines = []
+legend_lines.append(this_line)
+# Plot the actual delta
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["delta"]*180.0/3.141)
+# > Add the legend entry
+this_line.set_label("actual delta")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('delta [degrees]', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
+
+
+# Add an overall figure title
+fig.suptitle("Time series results", fontsize=12)
+
+# Save the plot
+fig.savefig(path_for_saving_figures + '/ad_time_series.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_time_series.pdf')
+
+
+## ------------------------------------------------
 #  CREATE AN ANIMATION
 #  ------------------------------------------------
-ani = env.unwrapped.render_matplotlib_animation_of_trajectory(px_traj, py_traj, theta_traj, delta_traj, numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
+ani = env.unwrapped.render_matplotlib_animation_of_trajectory(sim_time_series_results["px"], sim_time_series_results["py"], sim_time_series_results["theta"], sim_time_series_results["delta"], numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
 
 ani.save(path_for_saving_figures + '/ad_animation.gif')
 print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')

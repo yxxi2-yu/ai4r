@@ -28,13 +28,13 @@ class PIDPolicyForAutonomousDriving:
         self.integral_of_offset_error = 0.0
 
 
-    def compute_action(self, observation, info_dict, run_terminated):
+    def compute_action(self, observation, info_dict, terminated, truncated):
         # Get the "info_dict" observation of the curvature at the closest point on the road
         curvature_at_closest = observation["road_curvature_at_closest_point"][0]
         # Get the "info_dict" observation of the curvature at the progress queries to the line
         look_ahead_curvature = observation["look_ahead_road_curvatures"][0]
         
-        if (run_terminated):
+        if (terminated):
             # Zero speed reference after reaching the end of the road
             speed_ref = 0.0
         else:
@@ -87,7 +87,7 @@ class PIDPolicyForAutonomousDriving:
             action[1] = 0.0
 
         # Zero steering and drive after reaching the end of the road
-        if (run_terminated):
+        if (terminated):
             action[1] = 0.0
 
         # Return the action

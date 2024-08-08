@@ -1087,6 +1087,160 @@ class AutonomousDrivingEnv(gym.Env):
             plt.close(self.figure)
 
 
+    # --------
+    # SIMULATE
+    # --------
+    def simulate_policy(self, N_sim, policy):
+
+        # Initialise arrays for storing time series:
+        reward_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
+
+        px_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
+        py_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
+        theta_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
+        vx_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
+        vy_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
+        omega_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
+        delta_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
+
+        road_progress_at_closest_point_sim   =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        distance_to_closest_point_sim        =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        heading_angle_relative_to_line_sim   =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        road_curvature_at_closest_point_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        px_closest_sim                       =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        py_closest_sim                       =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        px_closest_in_body_frame_sim         =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        py_closest_in_body_frame_sim         =  np.full([N_sim+1], np.nan, dtype=np.float32)
+
+        drive_command_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        delta_request_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
+
+        # Reset the gymnasium, which also:
+        # > Provides the first observation
+        # > Updates the "self.current_ground_truth" dictionary
+
+        observation, info_dict = self.reset()
+
+        # Put the initial condition into the first entry of the state trajectory results
+        this_time_index = 0
+        px_sim[this_time_index]     =  self.current_ground_truth["px"]
+        py_sim[this_time_index]     =  self.current_ground_truth["py"]
+        theta_sim[this_time_index]  =  self.current_ground_truth["theta"]
+        vx_sim[this_time_index]     =  self.current_ground_truth["vx"]
+        vy_sim[this_time_index]     =  self.current_ground_truth["vy"]
+        omega_sim[this_time_index]  =  self.current_ground_truth["omega"]
+        delta_sim[this_time_index]  =  self.current_ground_truth["delta"]
+
+        road_progress_at_closest_point_sim[this_time_index]   =  self.current_ground_truth["road_progress_at_closest_point"]
+        distance_to_closest_point_sim[this_time_index]        =  self.current_ground_truth["distance_to_closest_point"]
+        heading_angle_relative_to_line_sim[this_time_index]   =  self.current_ground_truth["heading_angle_relative_to_line"]
+        road_curvature_at_closest_point_sim[this_time_index]  =  self.current_ground_truth["road_curvature_at_closest_point"]
+        px_closest_sim[this_time_index]                       =  self.current_ground_truth["px_closest"]
+        py_closest_sim[this_time_index]                       =  self.current_ground_truth["py_closest"]
+        px_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["px_closest_in_body_frame"]
+        py_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["py_closest_in_body_frame"]
+
+        # Display that we are starting this simulation run
+        print("\n")
+        print("Now starting simulation.")
+
+        # Initialize the flag to when termination occurs
+        # > Which corresponds to the car reaching the end of the road
+        sim_terminated = False
+
+        # Initialize the flag to when truncation occurs
+        # > Which corresponds to any of:
+        #   - The car going too fast or too slow
+        #   - The car deviating too far from the line
+        sim_truncated = False
+
+        # ITERATE OVER THE TIME STEPS OF THE SIMULATION
+        for i_step in range(N_sim):
+            # Compute the action to apply at this time step
+            action = policy.compute_action(observation, info_dict, sim_terminated, sim_truncated)
+            # Step forward the gymnasium
+            # > This also updates the "self.current_ground_truth" dictionary
+            observation, reward, terminated, truncated, info_dict = self.step(action)
+
+            # Store the reward for this time step
+            reward_sim[this_time_index] = reward
+
+            # Store the action applied at this time step
+            drive_command_sim[this_time_index]  =  action[0]
+            delta_request_sim[this_time_index]  =  action[1]
+
+            # Store the states results from the step
+            this_time_index = this_time_index+1
+            px_sim[this_time_index]     =  self.current_ground_truth["px"]
+            py_sim[this_time_index]     =  self.current_ground_truth["py"]
+            theta_sim[this_time_index]  =  self.current_ground_truth["theta"]
+            vx_sim[this_time_index]     =  self.current_ground_truth["vx"]
+            vy_sim[this_time_index]     =  self.current_ground_truth["vy"]
+            omega_sim[this_time_index]  =  self.current_ground_truth["omega"]
+            delta_sim[this_time_index]  =  self.current_ground_truth["delta"]
+
+            road_progress_at_closest_point_sim[this_time_index]   =  self.current_ground_truth["road_progress_at_closest_point"]
+            distance_to_closest_point_sim[this_time_index]        =  self.current_ground_truth["distance_to_closest_point"]
+            heading_angle_relative_to_line_sim[this_time_index]   =  self.current_ground_truth["heading_angle_relative_to_line"]
+            road_curvature_at_closest_point_sim[this_time_index]  =  self.current_ground_truth["road_curvature_at_closest_point"]
+            px_closest_sim[this_time_index]                       =  self.current_ground_truth["px_closest"]
+            py_closest_sim[this_time_index]                       =  self.current_ground_truth["py_closest"]
+            px_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["px_closest_in_body_frame"]
+            py_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["py_closest_in_body_frame"]
+
+            # Check whether termination occurred
+            if terminated:
+                sim_terminated = True
+            # Check whether truncation occurred
+            if truncated:
+                sim_truncated = True
+            # End the simulation is either terminated or truncated
+            if (terminated or truncated):
+                break
+        # FINISHED ITERATING OVER THE SIMULATION TIME
+
+        # Display that the simulation is finished
+        print("Simulation finished")
+        print("\n")
+
+        # Compute the time and time indicies for returning
+        time_index_sim = np.arange(start=0, stop=N_sim+1, step=1)
+        time_in_seconds_sim = time_index_sim * self.integration_Ts
+
+        # Put all the time series into a dictionary
+        sim_time_series_dict = {
+            "terminated"  :  sim_terminated,
+            "truncated"   :  sim_truncated,
+
+            "time_in_seconds"  :  time_index_sim,
+            "time_index"       :  time_in_seconds_sim,
+
+            "reward"  : reward_sim,
+
+            "px"     :  px_sim,
+            "py"     :  py_sim,
+            "theta"  :  theta_sim,
+            "vx"     :  vx_sim,
+            "vy"     :  vy_sim,
+            "omega"  :  omega_sim,
+            "delta"  :  delta_sim,
+
+            "road_progress_at_closest_point"   :  road_progress_at_closest_point_sim,
+            "distance_to_closest_point"        :  distance_to_closest_point_sim,
+            "heading_angle_relative_to_line"   :  heading_angle_relative_to_line_sim,
+            "road_curvature_at_closest_point"  :  road_curvature_at_closest_point_sim,
+            "px_closest"                       :  px_closest_sim,
+            "py_closest"                       :  py_closest_sim,
+            "px_closest_in_body_frame"         :  px_closest_in_body_frame_sim,
+            "py_closest_in_body_frame"         :  py_closest_in_body_frame_sim,
+
+            "drive_command"  :  drive_command_sim,
+            "delta_request"  :  delta_request_sim,
+        }
+
+        # Return the results dictionary
+        return sim_time_series_dict
+
 
 
     # -------------------------
