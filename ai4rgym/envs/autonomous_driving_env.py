@@ -1062,11 +1062,23 @@ class AutonomousDrivingEnv(gym.Env):
             # Update the window
             self.render_matplotlib_zoom_to(px=px_traj[i],py=py_traj[i],x_width=20,y_height=20,axis_handle=axis_4_ani)
 
+        # Check the length of the trajectory
+        # > By checking for the first nan
+        # > If the trajectory did not terminate nor truncate,
+        #   then there should be no nans
+        # Find the index of the first NaN
+        nan_index = np.where(np.isnan(px_traj))[0]
+        # Determine the length up to the first NaN
+        if nan_index.size > 0:
+            traj_length = nan_index[0]
+        else:
+            traj_length = len(px_traj)
+
         # Create the list of trajectory indicies to render
-        traj_idx_to_render = range(0,len(px_traj),traj_increment)
+        traj_indicies_to_render = range(0,traj_length,traj_increment)
 
         # Create the animation
-        ani = animation.FuncAnimation(fig_4_ani, animate_one_trajectory_frame, frames=traj_idx_to_render, interval=interval_btw_frames_ms)
+        ani = animation.FuncAnimation(fig_4_ani, animate_one_trajectory_frame, frames=traj_indicies_to_render, interval=interval_btw_frames_ms)
 
         # Return the animation object
         return ani

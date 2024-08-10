@@ -83,9 +83,9 @@ bicycle_model_parameters = {
 # > {"type":"curved", "curvature":1/50.0, "length":30.0}
 road_elements_list = [
     {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":10.0},
+    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":1.0},
     {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":-1/2000.0, "angle_in_degrees":10.0},
+    {"type":"curved", "curvature":-1/2000.0, "angle_in_degrees":1.0},
     {"type":"straight", "length":100.0},
 ]
 
