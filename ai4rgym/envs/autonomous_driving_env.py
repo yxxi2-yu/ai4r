@@ -495,6 +495,9 @@ class AutonomousDrivingEnv(gym.Env):
 
             "px_closest_in_body_frame"  :  0.0,
             "py_closest_in_body_frame"  :  0.0,
+
+            "look_ahead_line_coords_in_body_frame"  :  0.0,
+            "look_ahead_road_curvatures"            :  0.0,
         }
 
         # PROGRESS QUERIES:
@@ -565,6 +568,9 @@ class AutonomousDrivingEnv(gym.Env):
 
         self.current_ground_truth["px_closest_in_body_frame"]  =  road_info_dict["px_closest_in_body_frame"]
         self.current_ground_truth["py_closest_in_body_frame"]  =  road_info_dict["py_closest_in_body_frame"]
+
+        self.current_ground_truth["look_ahead_line_coords_in_body_frame"]  =  road_info_dict["road_points_in_body_frame"]
+        self.current_ground_truth["look_ahead_road_curvatures"]            =  road_info_dict["curvatures"]
 
         # Compute the measurement values
         road_progress_at_closest_point = road_info_dict["progress_at_closest_p"] * self.scaling_for_road_progress_at_closest_point
@@ -1276,6 +1282,9 @@ class AutonomousDrivingEnv(gym.Env):
             "omega" : self.car.omega,
             "delta" : self.car.delta,
         }
+
+    def get_current_ground_truth(self):
+        return self.current_ground_truth
 
     def set_integration_method(self, integration_method):
         # Set the method to be used for numerical integration of the equations of motion

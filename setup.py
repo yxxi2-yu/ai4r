@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    packages=["ai4rgym","policies","unit_tests"],
+    packages=["ai4rgym","policies","unit_tests","evaluation"],
     name="ai4rgym",
     version="0.0.1",
     install_requires=[

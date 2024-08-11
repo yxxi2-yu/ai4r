@@ -63,4 +63,4 @@ plot_closest_point_for_whole_space(road, closest_point_figure_path_and_name, gri
 
 # Specify the path for saving the figure
 look_ahead_validity_figure_path_and_name = path_for_saving_figures + "/road_test_of_look_ahead_validity.pdf"
-look_ahead_is_valid(road, closest_point_figure_path_and_name, grid_spacing=None)
+look_ahead_is_valid(road, look_ahead_validity_figure_path_and_name, grid_spacing=None)

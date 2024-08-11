@@ -7,6 +7,8 @@ import matplotlib.animation as animation
 import gymnasium
 import ai4rgym
 from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
+from evaluation.evaluation_for_autonomous_driving import simulate_policy
+from evaluation.evaluation_for_autonomous_driving import plot_results_from_time_series_dict
 
 
 
@@ -83,10 +85,8 @@ bicycle_model_parameters = {
 # > {"type":"curved", "curvature":1/50.0, "length":30.0}
 road_elements_list = [
     {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":1.0},
-    {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":-1/2000.0, "angle_in_degrees":1.0},
-    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":45.0},
+    {"type":"straight", "length":500.0},
 ]
 
 
@@ -276,136 +276,27 @@ N_sim = 850
 # Create the policy
 pid_policy = PIDPolicyForAutonomousDriving()
 
+# Specify whether or not to save the look head results
+# > Note that this is more data that all other parts of the results combined
+should_save_look_ahead_results = True
+
 # Run the simulation
-sim_time_series_results = env.unwrapped.simulate_policy(N_sim, pid_policy)
+sim_time_series_results = simulate_policy(env, N_sim, pid_policy, should_save_look_ahead_results)
 
 
 
-## ------------------------------------------------
-#  PLOT THE RESULTS - IN CARTESIAN COORDINATE SPACE
-#  ------------------------------------------------
+## ----------------
+#  PLOT THE RESULTS
+#  ----------------
 
-# Open the figure
-fig, axs = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
+# Specify a suffix for the plot file names
+# > This is useful if the plot is called within a loop,
+#   for example, the suffix could be the number of RL
+#   training iterations performed thus far.
+file_name_suffix = ""
 
-# Render the road onto the axis
-env.unwrapped.road.render_road(axs)
-
-# Initialize a list for the legend
-legend_lines = []
-
-# Plot the (px,py) trajectory
-this_line, = axs.plot(sim_time_series_results["px"],sim_time_series_results["py"])
-# > Add the legend entry
-this_line.set_label("trajectory")
-legend_lines.append(this_line)
-
-# Set the labels:
-axs.set_xlabel('px [meters]', fontsize=10)
-axs.set_ylabel('py [meters]', fontsize=10)
-
-# Add grid lines
-axs.grid(visible=True, which="both", axis="both", linestyle='--')
-
-# Set the aspect ratio for equally scaled axes
-axs.set_aspect('equal', adjustable='box')
-
-# Show a legend
-fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
-
-# Add an overall figure title
-fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
-
-# Save the plot
-fig.savefig(path_for_saving_figures + '/ad_cartesian_coords.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords.pdf')
-
-
-## ------------------------------------------------
-#  PLOT THE RESULTS - TIME SERIES
-#  ------------------------------------------------
-
-# Open the figure
-fig, axs = plt.subplots(4, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
-
-this_ax_idx = -1
-
-# Plot the reward time series
-this_ax_idx = this_ax_idx + 1
-this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["reward"])
-# > Add the legend entry
-this_line.set_label("reward")
-legend_lines = []
-legend_lines.append(this_line)
-# Set the labels:
-axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
-axs[this_ax_idx].set_ylabel('reward', fontsize=10)
-# Add grid lines
-axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
-# Show a legend
-axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
-
-
-# Plot the "distance to line" time series
-this_ax_idx = this_ax_idx + 1
-this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["distance_to_closest_point"])
-# > Add the legend entry
-this_line.set_label("dist to line")
-legend_lines = []
-legend_lines.append(this_line)
-# Set the labels:
-axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
-axs[this_ax_idx].set_ylabel('dist [meters]', fontsize=10)
-# Add grid lines
-axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
-# Show a legend
-axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
-
-
-# Plot the "drive command" time series
-this_ax_idx = this_ax_idx + 1
-this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["drive_command"])
-# > Add the legend entry
-this_line.set_label("drive command")
-legend_lines = []
-legend_lines.append(this_line)
-# Set the labels:
-axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
-axs[this_ax_idx].set_ylabel('drive [%]', fontsize=10)
-# Add grid lines
-axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
-# Show a legend
-axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
-
-
-# Plot the "drive command" time series
-this_ax_idx = this_ax_idx + 1
-this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["delta_request"]*180.0/3.141)
-# > Add the legend entry
-this_line.set_label("delta request")
-legend_lines = []
-legend_lines.append(this_line)
-# Plot the actual delta
-this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["delta"]*180.0/3.141)
-# > Add the legend entry
-this_line.set_label("actual delta")
-legend_lines = []
-legend_lines.append(this_line)
-# Set the labels:
-axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
-axs[this_ax_idx].set_ylabel('delta [degrees]', fontsize=10)
-# Add grid lines
-axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
-# Show a legend
-axs[this_ax_idx].legend(handles=legend_lines, loc="lower center", ncol=1, labelspacing=0.1)
-
-
-# Add an overall figure title
-fig.suptitle("Time series results", fontsize=12)
-
-# Save the plot
-fig.savefig(path_for_saving_figures + '/ad_time_series.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_time_series.pdf')
+# Call the plotting function
+plot_details_list = plot_results_from_time_series_dict(env, sim_time_series_results, path_for_saving_figures, file_name_suffix)
 
 
 ## ------------------------------------------------
@@ -418,5 +309,3 @@ print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
 
 #from IPython.display import HTML
 #HTML(ani.to_jshtml())
-
-#plt.show()

@@ -67,6 +67,7 @@ def plot_closest_point_for_whole_space(road, plot_path_and_name, grid_spacing=No
 
     print("[UNIT TESTING] Finished computing closest points.")
 
+    print("[UNIT TESTING] Now plotting the results")
     # Plot all the lines from test point to closest points
     line_handles = axs.plot(plot_points_x, plot_points_y, color="blue", linewidth=0.2, linestyle="-", marker="o", markersize=1, markerfacecolor="k", markeredgewidth=0.0)
 
@@ -88,7 +89,7 @@ def plot_closest_point_for_whole_space(road, plot_path_and_name, grid_spacing=No
 
     # Save the plot
     fig.savefig(plot_path_and_name)
-    print("[UNIT TESTING] Finished plotting results, figure saved at:" + plot_path_and_name)
+    print("[UNIT TESTING] Finished plotting results, figure saved at: " + plot_path_and_name)
 
 
 
@@ -103,7 +104,11 @@ def look_ahead_is_valid(road, plot_path_and_name, grid_spacing=None):
     #legend_lines = []
 
     # Render the road
-    road.render_road(axs)
+    road_handles = road.render_road(axs)
+
+    # Make the road line thicker
+    for handle in road_handles:
+        handle.set_linewidth(5.0)
 
     # Get the extent of the road from the plot area
     x_min, x_max = axs.get_xlim()
@@ -145,6 +150,11 @@ def look_ahead_is_valid(road, plot_path_and_name, grid_spacing=None):
     temp_increment = 10.0
     look_ahead_progress_queries = np.linspace(temp_increment , 100.0, num=10, endpoint=True)
 
+    # Initialize arrays for storing the results
+    num_look_ahead_points = look_ahead_progress_queries.size
+    plot_points_x = np.empty((num_look_ahead_points,num_test_points))
+    plot_points_y = np.empty((num_look_ahead_points,num_test_points))
+
     # Iterate through all the points
     this_point_idx = 0
     for x in x_grid_test:
@@ -166,11 +176,20 @@ def look_ahead_is_valid(road, plot_path_and_name, grid_spacing=None):
                 print("[UNIT TESTING] nan found in the \"curvatures\" array for test coordinate (x,y) = ( " + str(x) + " , " + str(y) + " )")
                 found_nan_somewhere = True
 
+            # Transform the look-ahead points into world frame
+            # > Rotation matrix
+            theta_rotate = 0.0
+            R_mat = np.array([[np.cos(theta_rotate),np.sin(theta_rotate)],[-np.sin(theta_rotate),np.cos(theta_rotate)]])
+            # Translation vector
+            this_p = np.array([[x],[y]], dtype=np.float32)
+            # Transpose the road point
+            road_points = np.transpose( road_info["road_points_in_body_frame"] )
+            # Transform the look-ahead points
+            look_ahead_point_in_world_frame = np.add( this_p , np.matmul( R_mat , road_points ) )
+
             # Put the results into the array
-            #plot_points_x[0,this_point_idx] = road_info["px"]
-            #plot_points_x[1,this_point_idx] = road_info["px_closest"]
-            #plot_points_y[0,this_point_idx] = road_info["py"]
-            #plot_points_y[1,this_point_idx] = road_info["py_closest"]
+            plot_points_x[:,this_point_idx] = look_ahead_point_in_world_frame[0,:]
+            plot_points_y[:,this_point_idx] = look_ahead_point_in_world_frame[1,:]
             # Increment the counter
             this_point_idx = this_point_idx + 1
 
@@ -181,8 +200,9 @@ def look_ahead_is_valid(road, plot_path_and_name, grid_spacing=None):
     else:
         print("[UNIT TESTING] Test FAILED.")
 
-    # Plot all the lines from test point to closest points
-    #line_handles = axs.plot(plot_points_x, plot_points_y, color="blue", linewidth=0.2, linestyle="-", marker="o", markersize=1, markerfacecolor="k", markeredgewidth=0.0)
+    print("[UNIT TESTING] Now plotting the results")
+    # Plot all the look ahead points
+    line_handles = axs.plot(plot_points_x, plot_points_y, color="red", linewidth=0, marker="o", markersize=1, markerfacecolor="red", markeredgewidth=0.0)
 
     # Set the labels:
     axs.set_xlabel('px [meters]', fontsize=10)
@@ -198,8 +218,8 @@ def look_ahead_is_valid(road, plot_path_and_name, grid_spacing=None):
     #fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
 
     # Add an overall figure title
-    fig.suptitle("Testing for the closest points on the road", fontsize=12)
+    fig.suptitle("Testing for the validity of roda look-ahead points", fontsize=12)
 
     # Save the plot
-    #fig.savefig(plot_path_and_name)
-    #print("[UNIT TESTING] Finished plotting results, figure saved at:" + plot_path_and_name)
+    fig.savefig(plot_path_and_name)
+    print("[UNIT TESTING] Finished plotting results, figure saved at: " + plot_path_and_name)
