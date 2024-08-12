@@ -556,7 +556,7 @@ class AutonomousDrivingEnv(gym.Env):
         self.current_ground_truth["vx"]     =  self.car.vx
         self.current_ground_truth["vy"]     =  self.car.vy
         self.current_ground_truth["omega"]  =  self.car.omega
-        self.current_ground_truth["delta"]  =  self.car.omega
+        self.current_ground_truth["delta"]  =  self.car.delta
 
         self.current_ground_truth["road_progress_at_closest_point"]   =  road_info_dict["progress_at_closest_p"]
         self.current_ground_truth["distance_to_closest_point"]        =  (road_info_dict["closest_distance"] * road_info_dict["side_of_the_road_line"])

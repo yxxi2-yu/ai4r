@@ -9,8 +9,8 @@ import ai4rgym
 from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
 from evaluation.evaluation_for_autonomous_driving import simulate_policy
 from evaluation.evaluation_for_autonomous_driving import plot_results_from_time_series_dict
-
-
+from evaluation.evaluation_for_autonomous_driving import plot_road_from_list_of_road_elements
+from evaluation.evaluation_for_autonomous_driving import plot_current_state_zoomed_in
 
 
 
@@ -33,6 +33,38 @@ path_for_saving_figures = 'examples/saved_figures'
 
 
 
+## ----------------
+#  SPECIFY THE ROAD
+#  ----------------
+
+# Specified as a list of dictionaries, where each
+# element in the list specifies a segment of the road.
+# Example segment dictionaries:
+# > {"type":"straight", "length":3.0}
+# > {"type":"curved", "curvature":1/50.0, "angle_in_degrees":45.0}
+# > {"type":"curved", "curvature":1/50.0, "length":30.0}
+road_elements_list = [
+    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":45.0},
+    {"type":"straight", "length":500.0},
+]
+
+
+
+## -------------
+#  PLOT THE ROAD
+#  -------------
+# Specify a suffix for the plot file names
+# > This is useful if the plot is called within a loop,
+#   for example, the suffix could be an identifer for
+#   the particular road.
+file_name_suffix = ""
+
+# Call the plotting function
+road_plot_details = plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_figures, file_name_suffix)
+
+
+
 ## ------------------------------
 #  SPECIFY THE VEHICLE PARAMETERS
 #  ------------------------------
@@ -46,10 +78,10 @@ bicycle_model_parameters = {
     "Iz" : (1.0/12.0) * 2000.0 * (4.692**2+1.850**2),
     "Cm" : (1.0/100.0) * (1.0 * 400.0 * 9.0) / 0.2286,
     "Cd" : 0.5 * 0.24 * 2.2204 * 1.202,
-    "delta_offset" : 0 * np.pi/180,
+    "delta_offset" : 0.0 * np.pi/180,
     "delta_request_max" : 45 * np.pi/180,
-    "Ddelta_lower_limit" : -45 * np.pi/180,
-    "Ddelta_upper_limit" :  45 * np.pi/180,
+    "Ddelta_lower_limit" : -90 * np.pi/180,
+    "Ddelta_upper_limit" :  90 * np.pi/180,
     "v_transition_min" : 500.0 / 3.6,
     "v_transition_max" : 600.0 / 3.6,
     "body_len_f" : (0.55*2.875) * 1.5,
@@ -70,24 +102,6 @@ bicycle_model_parameters = {
 # The Pacejka's tyre formula coefficients default to the value from here
 # > Source: https://www.edy.es/dev/docs/pacejka-94-parameters-explained-a-comprehensive-guide/
 # > https://au.mathworks.com/help/sdl/ref/tireroadinteractionmagicformula.html
-
-
-
-## ----------------
-#  SPECIFY THE ROAD
-#  ----------------
-
-# Specified as a list of dictionaries, where each
-# element in the list specifies a segment of the road.
-# Example segment dictionaries:
-# > {"type":"straight", "length":3.0}
-# > {"type":"curved", "curvature":1/50.0, "angle_in_degrees":45.0}
-# > {"type":"curved", "curvature":1/50.0, "length":30.0}
-road_elements_list = [
-    {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":45.0},
-    {"type":"straight", "length":500.0},
-]
 
 
 
@@ -195,7 +209,7 @@ observation_parameters = {
     "vx_sensor_stddev"  : 0.1,
 
     "distance_to_closest_point_bias"    :  0.0,
-    "distance_to_closest_point_stddev"  :  0.1,
+    "distance_to_closest_point_stddev"  :  0.01,
 
     "heading_angle_relative_to_line_bias"    :  0.0,
     "heading_angle_relative_to_line_stddev"  :  0.01,
@@ -239,30 +253,16 @@ env = gymnasium.make(
 
 
 
-## ----------------------------
-#  PLOT (i.e., RENDER) THE ROAD
-#  ----------------------------
+## -------------------------
+#  PLOT AN INITIAL CONDITION
+#  -------------------------
 
 # Reset the environment
 env.reset()
-# Initialize the figure for plotting
-env.unwrapped.render_matplotlib_init_figure()
-# Plot the road
-env.unwrapped.render_matplotlib_plot_road()
-# Add a title
-env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
-# Save the figure
-env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_road.pdf')
-
-# Zoom into the start position
-env.unwrapped.render_matplotlib_zoom_to(px=0,py=0,x_width=20,y_height=20)
-# Add a title
-env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
-# Save the figure
-env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_zoom.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom.pdf')
-
+# Specify a suffix for the plot file names
+file_name_suffix = ""
+# Call the plotting function
+plot_current_state_zoomed_in(env, path_for_saving_figures, file_name_suffix)
 
 
 ## -------------------
@@ -295,8 +295,23 @@ sim_time_series_results = simulate_policy(env, N_sim, pid_policy, should_save_lo
 #   training iterations performed thus far.
 file_name_suffix = ""
 
+# Specify a flag for whether to plot the reward or not
+# > For some policy or policy synthesis method it is
+#   NOT convenient to use the reward coming from the
+#   environment.
+#   - This is usually the case when the reward function
+#     is explicitly a (hyper-) parameter for the policy
+#     synthesis method.
+#   - For example, the reward function is directly used
+#     in MPC, and hence the per-time-step reward values
+#     from the environment are not necessary for MPC
+#     (and hence the reward values from the environment
+#     are often out-of-sync with the reward function
+#     bring used for MPC).
+should_plot_reward = True
+
 # Call the plotting function
-plot_details_list = plot_results_from_time_series_dict(env, sim_time_series_results, path_for_saving_figures, file_name_suffix)
+plot_details_list = plot_results_from_time_series_dict(env, sim_time_series_results, path_for_saving_figures, file_name_suffix, should_plot_reward)
 
 
 ## ------------------------------------------------
