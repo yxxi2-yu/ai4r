@@ -224,7 +224,7 @@ class BicycleModelDynamic:
 
 
 
-    def set_action_requests(self, drive_command_request = 0, delta_request = 0):
+    def set_action_requests(self, drive_command_request = 0.0, delta_request = 0.0):
         """
         Set the action request values, clipping them to their allowable range.
 
@@ -423,8 +423,8 @@ class BicycleModelDynamic:
 
         # Convert the requested actions into the dynamic model actions
         # > For steering angle:
-        delta_target = 1.0 * self._delta_request + self.delta_offset
-        Ddelta_target = (delta_target - self.delta) / (Ts*num_steps)
+        delta_target = self._delta_request + self.delta_offset
+        Ddelta_target = (delta_target - self.delta) / (Ts*float(num_steps))
         self._Ddelta = max( self.Ddelta_lower_limit , min( Ddelta_target , self.Ddelta_upper_limit ))
 
         # > For velocity:

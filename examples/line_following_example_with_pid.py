@@ -7,8 +7,10 @@ import matplotlib.animation as animation
 import gymnasium
 import ai4rgym
 from policies.pid_policy_for_autonomous_driving import PIDPolicyForAutonomousDriving
-
-
+from evaluation.evaluation_for_autonomous_driving import simulate_policy
+from evaluation.evaluation_for_autonomous_driving import plot_results_from_time_series_dict
+from evaluation.evaluation_for_autonomous_driving import plot_road_from_list_of_road_elements
+from evaluation.evaluation_for_autonomous_driving import plot_current_state_zoomed_in
 
 
 
@@ -31,6 +33,38 @@ path_for_saving_figures = 'examples/saved_figures'
 
 
 
+## ----------------
+#  SPECIFY THE ROAD
+#  ----------------
+
+# Specified as a list of dictionaries, where each
+# element in the list specifies a segment of the road.
+# Example segment dictionaries:
+# > {"type":"straight", "length":3.0}
+# > {"type":"curved", "curvature":1/50.0, "angle_in_degrees":45.0}
+# > {"type":"curved", "curvature":1/50.0, "length":30.0}
+road_elements_list = [
+    {"type":"straight", "length":100.0},
+    {"type":"curved", "curvature":1/2000.0, "angle_in_degrees":45.0},
+    {"type":"straight", "length":500.0},
+]
+
+
+
+## -------------
+#  PLOT THE ROAD
+#  -------------
+# Specify a suffix for the plot file names
+# > This is useful if the plot is called within a loop,
+#   for example, the suffix could be an identifer for
+#   the particular road.
+file_name_suffix = ""
+
+# Call the plotting function
+road_plot_details = plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_figures, file_name_suffix)
+
+
+
 ## ------------------------------
 #  SPECIFY THE VEHICLE PARAMETERS
 #  ------------------------------
@@ -44,10 +78,10 @@ bicycle_model_parameters = {
     "Iz" : (1.0/12.0) * 2000.0 * (4.692**2+1.850**2),
     "Cm" : (1.0/100.0) * (1.0 * 400.0 * 9.0) / 0.2286,
     "Cd" : 0.5 * 0.24 * 2.2204 * 1.202,
-    "delta_offset" : 0 * np.pi/180,
+    "delta_offset" : 0.0 * np.pi/180,
     "delta_request_max" : 45 * np.pi/180,
-    "Ddelta_lower_limit" : -45 * np.pi/180,
-    "Ddelta_upper_limit" :  45 * np.pi/180,
+    "Ddelta_lower_limit" : -90 * np.pi/180,
+    "Ddelta_upper_limit" :  90 * np.pi/180,
     "v_transition_min" : 500.0 / 3.6,
     "v_transition_max" : 600.0 / 3.6,
     "body_len_f" : (0.55*2.875) * 1.5,
@@ -71,26 +105,6 @@ bicycle_model_parameters = {
 
 
 
-## ----------------
-#  SPECIFY THE ROAD
-#  ----------------
-
-# Specified as a list of dictionaries, where each
-# element in the list specifies a segment of the road.
-# Example segment dictionaries:
-# > {"type":"straight", "length":3.0}
-# > {"type":"curved", "curvature":1/50.0, "angle_in_degrees":45.0}
-# > {"type":"curved", "curvature":1/50.0, "length":30.0}
-road_elements_list = [
-    {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":1/800.0, "angle_in_degrees":15.0},
-    {"type":"straight", "length":100.0},
-    {"type":"curved", "curvature":-1/400.0, "angle_in_degrees":30.0},
-    {"type":"straight", "length":100.0},
-]
-
-
-
 ## -----------------------------------------
 #  SPECIFY THE NUMERICAL INTEGRATION DETAILS
 #  -----------------------------------------
@@ -103,6 +117,17 @@ numerical_integration_parameters = {
     "method" : "rk4",
     "Ts" : 0.05,
     "num_steps_per_Ts" : 1,
+}
+
+
+
+## ----------------------------------
+#  SPECIFY THE TRUNCATION PARAMETERS
+#  ----------------------------------
+truncation_parameters = {
+    "speed_lower_bound"  :  (10.0/3.6),
+    "speed_upper_bound"  :  (200.0/3.6),
+    "distance_to_closest_point_upper_bound"  :  20.0,
 }
 
 
@@ -184,7 +209,7 @@ observation_parameters = {
     "vx_sensor_stddev"  : 0.1,
 
     "distance_to_closest_point_bias"    :  0.0,
-    "distance_to_closest_point_stddev"  :  0.1,
+    "distance_to_closest_point_stddev"  :  0.01,
 
     "heading_angle_relative_to_line_bias"    :  0.0,
     "heading_angle_relative_to_line_stddev"  :  0.01,
@@ -221,36 +246,23 @@ env = gymnasium.make(
     bicycle_model_parameters=bicycle_model_parameters,
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
+    truncation_parameters=truncation_parameters,
     initial_state_bounds=initial_state_bounds,
     observation_parameters=observation_parameters,
 )
 
 
 
-## ----------------------------
-#  PLOT (i.e., RENDER) THE ROAD
-#  ----------------------------
+## -------------------------
+#  PLOT AN INITIAL CONDITION
+#  -------------------------
 
 # Reset the environment
 env.reset()
-# Initialize the figure for plotting
-env.unwrapped.render_matplotlib_init_figure()
-# Plot the road
-env.unwrapped.render_matplotlib_plot_road()
-# Add a title
-env.unwrapped.figure.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
-# Save the figure
-env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_road.pdf')
-
-# Zoom into the start position
-env.unwrapped.render_matplotlib_zoom_to(px=0,py=0,x_width=20,y_height=20)
-# Add a title
-env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
-# Save the figure
-env.unwrapped.figure.savefig(path_for_saving_figures + '/ad_road_zoom.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom.pdf')
-
+# Specify a suffix for the plot file names
+file_name_suffix = ""
+# Call the plotting function
+plot_current_state_zoomed_in(env, path_for_saving_figures, file_name_suffix)
 
 
 ## -------------------
@@ -260,139 +272,55 @@ print('Saved figure: ' + path_for_saving_figures + '/ad_road_zoom.pdf')
 # Specify simulation length by:
 # > Number of steps
 N_sim = 850
-# > Time increment per simulation step (units: seconds)
-Ts_sim = 0.05
 
-# Specify the integration method to simulate
-integration_method = "rk4"
-
-# Specify the "progress queries" to look ahead 50 meters
-#progress_queries = np.array([100.0], dtype=np.float32)
-
-# Initialise array for storing (px,py) trajectory:
-px_traj    = np.empty([N_sim+1,], dtype=np.float32)
-py_traj    = np.empty([N_sim+1,], dtype=np.float32)
-theta_traj = np.empty([N_sim+1,], dtype=np.float32)
-delta_traj = np.empty([N_sim+1,], dtype=np.float32)
-
-# Set the integration method and Ts of the gymnasium
-env.unwrapped.set_integration_method(integration_method)
-env.unwrapped.set_integration_Ts(Ts_sim)
-
-# Set the progress queries
-#env.unwrapped.set_progress_queries_for_generating_observations(progress_queries)
-
-# Reset the gymnasium
-# > which also returns the first observation
-observation, info_dict = env.reset()
-
-# Put the initial condition into the first entry of the state trajectory results
-this_time_index = 0
-px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
-py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
-theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
-delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
-
-# Display that we are starting this simulation run
-print("\n")
-print("Now starting simulation.")
-
-# Initialize the flag to when the car reaches
-# the end of the road
-run_terminated = False
-
-
+# Create the policy
 pid_policy = PIDPolicyForAutonomousDriving()
 
-# ITERATE OVER THE TIME STEPS OF THE SIMULATION
-for i_step in range(N_sim):
+# Specify whether or not to save the look head results
+# > Note that this is more data that all other parts of the results combined
+should_save_look_ahead_results = True
 
-    # Set the road condition
-    env.unwrapped.set_road_condition(road_condition="wet")
-
-
-
-    ## --------------------
-    #  START OF POLICY CODE
-
-    action = pid_policy.compute_action(observation, info_dict, run_terminated)
-
-    #  END OF POLICY CODE
-    ## --------------------
+# Run the simulation
+sim_time_series_results = simulate_policy(env, N_sim, pid_policy, should_save_look_ahead_results)
 
 
 
-    # Step forward the gymnasium
-    observation, reward, terminated, truncated, info_dict = env.step(action)
+## ----------------
+#  PLOT THE RESULTS
+#  ----------------
 
-    # Store the results
-    this_time_index = this_time_index+1
-    px_traj[this_time_index]    = info_dict["ground_truth_px"][0]
-    py_traj[this_time_index]    = info_dict["ground_truth_py"][0]
-    theta_traj[this_time_index] = info_dict["ground_truth_theta"][0]
-    delta_traj[this_time_index] = info_dict["ground_truth_delta"][0]
+# Specify a suffix for the plot file names
+# > This is useful if the plot is called within a loop,
+#   for example, the suffix could be the number of RL
+#   training iterations performed thus far.
+file_name_suffix = ""
 
-    # Check whether the car reached the end of the road
-    if terminated:
-        if not(run_terminated):
-            run_terminated = True
+# Specify a flag for whether to plot the reward or not
+# > For some policy or policy synthesis method it is
+#   NOT convenient to use the reward coming from the
+#   environment.
+#   - This is usually the case when the reward function
+#     is explicitly a (hyper-) parameter for the policy
+#     synthesis method.
+#   - For example, the reward function is directly used
+#     in MPC, and hence the per-time-step reward values
+#     from the environment are not necessary for MPC
+#     (and hence the reward values from the environment
+#     are often out-of-sync with the reward function
+#     bring used for MPC).
+should_plot_reward = True
 
-# FINISHED ITERATING OVER THE SIMULATION TIME
-
-# Display that the simulation is finished
-print("Simulation finished")
-print("\n")
-
-
-## ------------------------------------------------
-#  PLOT THE RESULTS - IN CARTESIAN COORDINATE SPACE
-#  ------------------------------------------------
-
-# Open the figure
-fig, axs = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
-
-# Render the road onto the axis
-env.unwrapped.road.render_road(axs)
-
-# Initialize a list for the legend
-legend_lines = []
-
-# Plot the (px,py) trajectory
-this_line, = axs.plot(px_traj,py_traj)
-# > Add the legend entry
-this_line.set_label("trajectory")
-legend_lines.append(this_line)
-
-# Set the labels:
-axs.set_xlabel('px [meters]', fontsize=10)
-axs.set_ylabel('py [meters]', fontsize=10)
-
-# Add grid lines
-axs.grid(visible=True, which="both", axis="both", linestyle='--')
-
-# Set the aspect ratio for equally scaled axes
-axs.set_aspect('equal', adjustable='box')
-
-# Show a legend
-fig.legend(handles=legend_lines, loc="lower center", ncol=4, labelspacing=0.1)
-
-# Add an overall figure title
-fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
-
-# Save the plot
-fig.savefig(path_for_saving_figures + '/ad_cartesian_coords.pdf')
-print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords.pdf')
+# Call the plotting function
+plot_details_list = plot_results_from_time_series_dict(env, sim_time_series_results, path_for_saving_figures, file_name_suffix, should_plot_reward)
 
 
 ## ------------------------------------------------
 #  CREATE AN ANIMATION
 #  ------------------------------------------------
-ani = env.unwrapped.render_matplotlib_animation_of_trajectory(px_traj, py_traj, theta_traj, delta_traj, numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
+ani = env.unwrapped.render_matplotlib_animation_of_trajectory(sim_time_series_results["px"], sim_time_series_results["py"], sim_time_series_results["theta"], sim_time_series_results["delta"], numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
 
 ani.save(path_for_saving_figures + '/ad_animation.gif')
 print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
 
 #from IPython.display import HTML
 #HTML(ani.to_jshtml())
-
-#plt.show()

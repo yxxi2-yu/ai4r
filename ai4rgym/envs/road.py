@@ -36,7 +36,7 @@ class Road:
 
 
 
-    def __init__(self, epsilon_c=1/10000):
+    def __init__(self, epsilon_c=1/10000, road_elements_list=None):
         """
         Initialization function for the "Road" class.
 
@@ -49,6 +49,9 @@ class Road:
                 threshold is imposed to avoid nuermcial complication when
                 computing quantities that depend on the inverse of the curvature
                 (i.e., the radius).
+            road_element_list : list of dictionaries [OPTIONAL]
+                If provided, this is used to contruct the road elements as part
+                of initialization
 
         Returns
         -------
@@ -76,6 +79,22 @@ class Road:
         self.__start_hyperplane_b = np.empty((0,),dtype=np.float32)
         self.__end_hyperplane_A = np.empty((0,2),dtype=np.float32)
         self.__end_hyperplane_b = np.empty((0,),dtype=np.float32)
+
+        # Check if the "road_element_list" is provided
+        if (road_elements_list is not None):
+            # Add the road element
+            for element in road_elements_list:
+                if (element["type"] == "straight"):
+                    self.add_road_element_straight(element["length"])
+                elif (element["type"] == "curved"):
+                    if ("angle_in_degrees" in element):
+                        self.add_road_element_curved_by_angle(curvature=element["curvature"], angle_in_degrees=element["angle_in_degrees"])
+                    elif ("length" in element):
+                        self.add_road_element_curved_by_length(curvature=element["curvature"], length=element["length"])
+                    else:
+                        print("ERROR: curved road element specification is invalid, element = " + str(element))
+                else:
+                    print("ERROR: road element type is invalid, element = " + str(element))
 
 
     def get_c(self): return np.copy(self.__c)
@@ -156,8 +175,15 @@ class Road:
         angular_span = length * abs(curvature)
 
         # Warn the user if the angular span is greater than 2pi
-        if (angular_span >= 2*np.pi):
-            print("WARNING: Curved road element specified with angular span of " + "{:.1f}".format(angular_span*(180/np.pi)) + ", which is great than 0.5 revolution, which the limits of this class. Adding the element anyway")
+        if (angular_span >= (357.0*np.pi/180.0)):
+            print("ERROR: Curved road element specified with angular span of " + "{:.1f}".format(angular_span*(180.0/np.pi)) + " [degrees], which is greater than the limits of this class. SKIPPING this element")
+            return
+
+        if (angular_span >= (179.0*np.pi/180.0)):
+            print("WARNING: Curved road element specified with angular span of " + "{:.1f}".format(angular_span*(180.0/np.pi)) + " [degrees]. Splitting this into two separate curved element")
+            self.add_road_element_curved_by_length(curvature=curvature, length=(0.5*length))
+            self.add_road_element_curved_by_length(curvature=curvature, length=(0.5*length))
+            return
 
         # Append the details of this element
         self.__c   = np.append(self.__c  , curvature)
@@ -189,6 +215,17 @@ class Road:
         -------
         Nothing
         """
+        # Warn the user if the angular span is greater than 2pi
+        if (angle_in_degrees >= 357.0):
+            print("ERROR: Curved road element specified with angular span of " + "{:.1f}".format(angle_in_degrees) + " [degrees], which is greater than the limits of this class. SKIPPING this element")
+            return
+
+        if (angle_in_degrees >= 179.0):
+            print("WARNING: Curved road element specified with angular span of " + "{:.1f}".format(angle_in_degrees) + " [degrees]. Splitting this into two separate curved element")
+            self.add_road_element_curved_by_angle(curvature=curvature, angle_in_degrees=(0.5*angle_in_degrees))
+            self.add_road_element_curved_by_angle(curvature=curvature, angle_in_degrees=(0.5*angle_in_degrees))
+            return
+
         # Convert the angle to arc length and call the other function
         self.add_road_element_curved_by_length( curvature=curvature, length=(np.pi/180)*angle_in_degrees/abs(curvature))
 
@@ -311,6 +348,25 @@ class Road:
                 this_handles = axis_handle.plot(this_x, this_y)
 
             for handle in this_handles: plot_handles.append( handle )
+
+        # Set the colours
+        color_1 = (0.0,0.0,0.0)
+        color_2 = (0.3,0.3,0.3)
+        color_idx = 1
+        # Iterate over all handles
+        for handle in plot_handles:
+            # Get the colour to set
+            if (color_idx==1):
+                this_color=color_1
+                color_idx=2
+            elif (color_idx==2):
+                this_color=color_2
+                color_idx=1
+            else:
+                this_color=color_1
+                color_idx=2
+            # Set the colour
+            handle.set_color(this_color)
 
         return plot_handles
 
@@ -703,15 +759,32 @@ class Road:
 
             # Check if the progression is beyond the end of the road
             if (this_road_idx == len(self.__l_total_at_end) ):
-                p_coords[i_prog,0] = np.nan
-                p_coords[i_prog,1] = np.nan
-                p_angles[i_prog]   = np.nan
+                # Compute the extra progress beyond the end of the road
+                this_prog_beyond_end_of_road = this_prog - self.__l_total_at_end[-1]
+
+                # Double check this is actually beyond the end of the road
+                if (this_prog_beyond_end_of_road < 0.0):
+                    print("[ROAD CLASS] WARNING: a progress query is categorized as being beyond the end of the road, but it is not actually longer than the length of the road in the function \"convert_progression_to_coordinates\". Setting the road details to the road's end point for this query.")
+                    p_coords[i_prog,0] = self.__end_points[-1,0]
+                    p_coords[i_prog,1] = self.__end_points[-1,1]
+                    p_angles[i_prog]   = self.__end_angles[-1]
+
+                else:
+                    # Get the angle at the end of the road
+                    this_angle = self.__end_angles[-1]
+                    # Compute the coords by extending the end of the road by a straight line
+                    p_coords[i_prog,0] = self.__end_points[-1,0] + this_prog_beyond_end_of_road * np.cos(this_angle)
+                    p_coords[i_prog,1] = self.__end_points[-1,1] + this_prog_beyond_end_of_road * np.sin(this_angle)
+                    # Put in the angle
+                    p_angles[i_prog] = this_angle
 
             # Also check if the progression is before the start of the road
-            elif (this_prog < 0):
-                p_coords[i_prog,0] = np.nan
-                p_coords[i_prog,1] = np.nan
-                p_angles[i_prog]   = np.nan
+            elif (this_prog < 0.0):
+                # Display a warning
+                print("[ROAD CLASS] WARNING: a progress query is less than 0.0 in the function \"convert_progression_to_coordinates\". Setting the road details to the road's start point for this query.")
+                p_coords[i_prog,0] = 0.0
+                p_coords[i_prog,1] = 0.0
+                p_angles[i_prog]   = self.__start_angles[0]
 
             # Otherwise:
             else:
@@ -782,11 +855,14 @@ class Road:
 
             # Check if the progression is beyond the end of the road
             if (this_road_idx == len(self.__l_total_at_end) ):
-                p_curvatures[i_prog] = np.nan
+                # Set curvature of extending the end of the road by a straight line
+                p_curvatures[i_prog] = 0.0
 
             # Also check if the progression is before the start of the road
             elif (this_prog < 0):
-                p_curvatures[i_prog] = np.nan
+                # Display a warning
+                print("[ROAD CLASS] WARNING: a progress query is less than 0.0 in the function \"convert_progression_to_curvature\". Setting the road curvature to the road's starting curvature for this query.")
+                p_curvatures[i_prog] = self.__c[0]
 
             # Otherwise:
             else:
