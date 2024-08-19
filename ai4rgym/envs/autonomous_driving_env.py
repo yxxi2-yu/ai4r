@@ -103,7 +103,7 @@ class AutonomousDrivingEnv(gym.Env):
         bicycle_model_parameters,
         road_elements_list,
         numerical_integration_parameters,
-        truncation_parameters,
+        termination_parameters,
         initial_state_bounds,
         observation_parameters,
     ):
@@ -135,19 +135,25 @@ class AutonomousDrivingEnv(gym.Env):
                 - num_steps_per_Ts : int
                     The number of step that "integration_Ts" is split up into.
 
-            truncation_parameters : dictionary
-                Specifies the bounds for when to raise the truncation flag.
+            termination_parameters : dictionary
+                Specifies the bounds for when to raise the termination flag.
                 This dictionary should contain the folllowing keys:
                 - speed_lower_bound : float
-                    Truncation is flagged when the speed of the car drops below
+                    Termination is flagged when the speed of the car drops below
                     this lower bound value. If this is set to zero, then there is
                     effecively no lower bound.
+                - reward_for_speed_lower_bound : float
+                    The reward when this termination criteria triggers.
                 - speed_upper_bound : float
-                    Truncation is flagged when the speed of the car goes above
+                    Termination is flagged when the speed of the car goes above
                     this upper bound value.
+                - reward_for_speed_upper_bound : float
+                    The reward when this termination criteria triggers.
                 - distance_to_closest_point_upper_bound : float
-                    Truncation is flagged when the car deviates from the road line
+                    Termination is flagged when the car deviates from the road line
                     by more thatn this upper bound value.
+                - reward_for_distance_to_closest_point_upper_bound : float
+                    The reward when this termination criteria triggers.
 
             initial_state_bounds : dictionary
                 Specifies the minimum and maximum (i.e., lower and upper bounds) us for
@@ -255,21 +261,7 @@ class AutonomousDrivingEnv(gym.Env):
 
         # THE ROAD:
         # Instantiate a RoadEnv object
-        self.road = Road(epsilon_c=(1/10000))
-
-        # Add the road element
-        for element in road_elements_list:
-            if (element["type"] == "straight"):
-                self.road.add_road_element_straight(element["length"])
-            elif (element["type"] == "curved"):
-                if ("angle_in_degrees" in element):
-                    self.road.add_road_element_curved_by_angle(curvature=element["curvature"], angle_in_degrees=element["angle_in_degrees"])
-                elif ("length" in element):
-                    self.road.add_road_element_curved_by_length(curvature=element["curvature"], length=element["length"])
-                else:
-                    print("ERROR: curved road element specification is invalid, element = " + str(element))
-            else:
-                print("ERROR: road element type is invalid, element = " + str(element))
+        self.road = Road(epsilon_c=(1/10000), road_elements_list=road_elements_list)
 
         # Get the total road length into a variable for this class
         self.total_road_length = self.road.get_total_length()
@@ -284,11 +276,17 @@ class AutonomousDrivingEnv(gym.Env):
         self.integration_Ts = numerical_integration_parameters["Ts"]
         self.integration_num_steps_per_Ts =  1  if ("num_steps_per_Ts" not in numerical_integration_parameters) else numerical_integration_parameters["num_steps_per_Ts"]
 
-        # TRUNCATION SPECIFICATIONS:
-        # Set the truncation parameters
-        self.truncation_speed_lower_bound  =  0.0          if ("speed_lower_bound" not in truncation_parameters) else truncation_parameters["speed_lower_bound"]
-        self.truncation_speed_upper_bound  =  (200.0/3.6)  if ("speed_upper_bound" not in truncation_parameters) else truncation_parameters["speed_upper_bound"]
-        self.truncation_distance_to_closest_point_upper_bound  = 20.0  if ("distance_to_closest_point_upper_bound" not in truncation_parameters) else truncation_parameters["distance_to_closest_point_upper_bound"]
+        # Termination SPECIFICATIONS:
+        # Set the termination parameters
+        self.termination_speed_lower_bound  =  0.0          if ("speed_lower_bound" not in termination_parameters) else termination_parameters["speed_lower_bound"]
+        self.termination_speed_upper_bound  =  (200.0/3.6)  if ("speed_upper_bound" not in termination_parameters) else termination_parameters["speed_upper_bound"]
+        self.termination_distance_to_closest_point_upper_bound  = 20.0  if ("distance_to_closest_point_upper_bound" not in termination_parameters) else termination_parameters["distance_to_closest_point_upper_bound"]
+
+        self.termination_reward_for_speed_lower_bound                      =  0.0  if ("reward_for_speed_lower_bound"                     not in termination_parameters) else termination_parameters["reward_for_speed_lower_bound"]
+        self.termination_reward_for_speed_upper_bound                      =  0.0  if ("reward_for_speed_upper_bound"                     not in termination_parameters) else termination_parameters["reward_for_speed_upper_bound"]
+        self.termination_reward_for_distance_to_closest_point_upper_bound  =  0.0  if ("reward_for_distance_to_closest_point_upper_bound" not in termination_parameters) else termination_parameters["reward_for_distance_to_closest_point_upper_bound"]
+
+
 
         # INITIAL CONDITION SPECIFICATIONS:
         # Set the initial condition bound
@@ -322,17 +320,17 @@ class AutonomousDrivingEnv(gym.Env):
             "should_include_ground_truth_vy"                       :  "info",
             "should_include_ground_truth_omega"                    :  "info",
             "should_include_ground_truth_delta"                    :  "info",
-            "should_include_road_progress_at_closest_point"        :  "obs",
-            "should_include_vx_sensor"                             :  "obs",
+            "should_include_road_progress_at_closest_point"        :  "info",
+            "should_include_vx_sensor"                             :  "info",
             "should_include_distance_to_closest_point"             :  "obs",
             "should_include_heading_angle_relative_to_line"        :  "obs",
-            "should_include_heading_angular_rate_gyro"             :  "obs",
+            "should_include_heading_angular_rate_gyro"             :  "info",
             "should_include_accel_in_body_frame_x"                 :  "neither",
             "should_include_accel_in_body_frame_y"                 :  "neither",
-            "should_include_closest_point_coords_in_body_frame"    :  "obs",
-            "should_include_look_ahead_line_coords_in_body_frame"  :  "obs",
+            "should_include_closest_point_coords_in_body_frame"    :  "info",
+            "should_include_look_ahead_line_coords_in_body_frame"  :  "info",
             "should_include_road_curvature_at_closest_point"       :  "obs",
-            "should_include_look_ahead_road_curvatures"            :  "obs",
+            "should_include_look_ahead_road_curvatures"            :  "info",
             "should_include_gps_line_coords_in_world_frame"        :  "neither",
 
             "scaling_for_ground_truth_px"                       :  1.0,
@@ -356,13 +354,13 @@ class AutonomousDrivingEnv(gym.Env):
             "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
 
             "vx_sensor_bias"   : 0.0,
-            "vx_sensor_stddev" : 0.1,
+            "vx_sensor_stddev" : 0.0, #0.1
 
             "distance_to_closest_point_bias"    :  0.0,
-            "distance_to_closest_point_stddev"  :  0.05,
+            "distance_to_closest_point_stddev"  :  0.00, #0.01
 
             "heading_angle_relative_to_line_bias"    :  0.0,
-            "heading_angle_relative_to_line_stddev"  :  0.01,
+            "heading_angle_relative_to_line_stddev"  :  0.00, #0.01
 
             "heading_angular_rate_gyro_bias"    :  0.0,
             "heading_angular_rate_gyro_stddev"  :  0.0,
@@ -465,7 +463,7 @@ class AutonomousDrivingEnv(gym.Env):
         # Based on the observation parameters, construct the progress queries
         # that are used for getting look-ahead details about the line.
         temp_increment = self.look_ahead_line_coords_in_body_frame_distance / self.look_ahead_line_coords_in_body_frame_num_points
-        self.look_ahead_progress_queries = progress_queries = np.linspace(temp_increment , self.look_ahead_line_coords_in_body_frame_distance, num=(self.look_ahead_line_coords_in_body_frame_num_points), endpoint=True)
+        self.look_ahead_progress_queries = np.linspace(temp_increment , self.look_ahead_line_coords_in_body_frame_distance, num=(self.look_ahead_line_coords_in_body_frame_num_points), endpoint=True)
 
         # PROGRESS TRACKING
         # Initialize the "previous progress" variable to zero
@@ -758,6 +756,76 @@ class AutonomousDrivingEnv(gym.Env):
 
 
 
+    @staticmethod
+    def compute_default_reward_for_distance_to_line(d: float):
+        """
+        Calculate the default reward for encouraging the car to stay on or
+        close to the line-to-follow, i.e., encourage zero distance to the
+        center of the road.
+
+        Parameters
+        ----------
+            d : float
+                Distance to the center of the road in meters. This distance
+                should be a positive number regardless of the side of the road.
+
+        Returns
+        -------
+            float : reward value
+                Maximum value of reward: 3, goes to negative for distances > 2
+        """
+        # Define the coefficients
+        a = 3.0
+        b = 1.0
+        c = 2.0
+
+        # Calculate the reward separately for each interval of the distance
+        # > If (distance < 0.5); then reward with higher curvature
+        if d < 0.5:
+            return a * (1 - d**2)
+        # > Else If (0.5 <= distance < 2); then reward with lower curvature
+        elif 0.5 <= d < 2:
+            return b * (2 - d)**2
+        # > Else (2 <= distance); reward has high curvature
+        else:       # If
+            return -c * (d - 2)**3
+
+
+
+    @staticmethod
+    def compute_default_reward_for_speed(speed_in_kmph: float):
+        """
+        Default reward function for encouraging the car to maintain
+        a speed of 60 km/h
+
+        Parameters
+        ----------
+            speed_in_kmph : float
+            The speed of the car in kilometers per hour (i.e., kmph).
+
+        Returns
+        -------
+            float: reward value
+                Maximum value of reward: 300
+        """
+        # Coefficients derived from solving the equations
+        a = 1.0/12.0  # Coefficient for the quadratic function in the first and second segments
+        b = 300.0     # Offset for the quadratic function in the first segment
+        e = 10.0      # Coefficient for the linear function in the third segment
+
+        # Calculate the reward separately for each interval of the speed
+        # > If (speed < 60.0); then reward is a concave quadratic
+        if speed_in_kmph < 60.0:
+            return -a * (speed_in_kmph - 60.0)**2 + b
+        # > Else If (60.0 <= speed < 120.0); then reward is a concave quadratic
+        elif 60.0 <= speed_in_kmph < 120.0:
+            return -a * (speed_in_kmph - 60.0)**2 + b
+        # > Else (120.0 <= speed); reward is linearly decreasing
+        else:
+            return -e * (speed_in_kmph - 120.0)
+
+
+
     def undo_scaling(self, dict):
         # Take a copy so are not to change the input dictionary
         unscaled_dict = dict.copy()
@@ -927,35 +995,35 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Compute the "terminated" flag
         terminated = False
+        termination_reward = 0.0
         if (progress_at_closest_point >= self.total_road_length_for_termination):
             #print("(prog,tot_len) = ( " + str(info_dict["progress_at_closest_p"]) + " , " + str(self.total_road_length) + " )" )
             terminated = True
+        # > Terminate for being outside of the speed range
+        if (car_speed > self.termination_speed_upper_bound):
+            terminated = True
+            termination_reward += self.termination_reward_for_speed_upper_bound
+        if (car_speed < self.termination_speed_lower_bound):
+            terminated = True
+            termination_reward += self.termination_reward_for_speed_lower_bound
+        # > Terminate for deviating too much from the line
+        if (abs(distance_to_closest_point) > self.termination_distance_to_closest_point_upper_bound):
+            terminated = True
+            termination_reward += self.termination_reward_for_distance_to_closest_point_upper_bound
 
         # Compute the "truncated" flag
         truncated = False
-        # > Truncate for being outside of the speed range
-        if (car_speed > self.truncation_speed_upper_bound):
-            truncated = True
-        if (car_speed < self.truncation_speed_lower_bound):
-            truncated = True
-        # > Truncate for deviating too much from the line
-        if (abs(distance_to_closest_point) > self.truncation_distance_to_closest_point_upper_bound):
-            truncated = True
 
         # Set the reward
         # > Reward positive change in progress in this time-step
         progress_reward = progress_at_closest_point - self.previous_progress_at_closest_p
         # > Penalize deviating from the line
-        deviation_reward = -distance_to_closest_point**2
-        # > Penalize deviating from the init_condition speed range
-        speed_reward = 0
-        if (car_speed <= self.vx_init_min):
-            speed_reward = (car_speed-self.vx_init_min)**2
-        if (car_speed >= self.vx_init_max):
-            speed_reward = (car_speed-self.vx_init_max)**2
+        deviation_reward = AutonomousDrivingEnv.compute_default_reward_for_distance_to_line(d=abs(distance_to_closest_point))
+        # > Penalize deviating from the desired speed range
+        speed_reward = AutonomousDrivingEnv.compute_default_reward_for_speed(speed_in_kmph=(self.car.vx*3.6))
 
         # Sum together the reward components
-        reward = progress_reward + 10.0 * deviation_reward + 5.0 * speed_reward
+        reward = 0.0 * progress_reward + 100.0 * deviation_reward + 1.0 * speed_reward + termination_reward
         self.previous_progress_at_closest_p = progress_at_closest_point
 
         # Render, if necessary
@@ -1103,161 +1171,6 @@ class AutonomousDrivingEnv(gym.Env):
     # Close the matplotlib figure
         if (self.figure is not None):
             plt.close(self.figure)
-
-
-    # --------
-    # SIMULATE
-    # --------
-    def simulate_policy(self, N_sim, policy):
-
-        # Initialise arrays for storing time series:
-        reward_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
-
-        px_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
-        py_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
-        theta_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
-        vx_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
-        vy_sim    = np.full([N_sim+1,], np.nan, dtype=np.float32)
-        omega_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
-        delta_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
-
-        road_progress_at_closest_point_sim   =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        distance_to_closest_point_sim        =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        heading_angle_relative_to_line_sim   =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        road_curvature_at_closest_point_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        px_closest_sim                       =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        py_closest_sim                       =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        px_closest_in_body_frame_sim         =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        py_closest_in_body_frame_sim         =  np.full([N_sim+1], np.nan, dtype=np.float32)
-
-        drive_command_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
-        delta_request_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
-
-        # Reset the gymnasium, which also:
-        # > Provides the first observation
-        # > Updates the "self.current_ground_truth" dictionary
-
-        observation, info_dict = self.reset()
-
-        # Put the initial condition into the first entry of the state trajectory results
-        this_time_index = 0
-        px_sim[this_time_index]     =  self.current_ground_truth["px"]
-        py_sim[this_time_index]     =  self.current_ground_truth["py"]
-        theta_sim[this_time_index]  =  self.current_ground_truth["theta"]
-        vx_sim[this_time_index]     =  self.current_ground_truth["vx"]
-        vy_sim[this_time_index]     =  self.current_ground_truth["vy"]
-        omega_sim[this_time_index]  =  self.current_ground_truth["omega"]
-        delta_sim[this_time_index]  =  self.current_ground_truth["delta"]
-
-        road_progress_at_closest_point_sim[this_time_index]   =  self.current_ground_truth["road_progress_at_closest_point"]
-        distance_to_closest_point_sim[this_time_index]        =  self.current_ground_truth["distance_to_closest_point"]
-        heading_angle_relative_to_line_sim[this_time_index]   =  self.current_ground_truth["heading_angle_relative_to_line"]
-        road_curvature_at_closest_point_sim[this_time_index]  =  self.current_ground_truth["road_curvature_at_closest_point"]
-        px_closest_sim[this_time_index]                       =  self.current_ground_truth["px_closest"]
-        py_closest_sim[this_time_index]                       =  self.current_ground_truth["py_closest"]
-        px_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["px_closest_in_body_frame"]
-        py_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["py_closest_in_body_frame"]
-
-        # Display that we are starting this simulation run
-        print("\n")
-        print("Now starting simulation.")
-
-        # Initialize the flag to when termination occurs
-        # > Which corresponds to the car reaching the end of the road
-        sim_terminated = False
-
-        # Initialize the flag to when truncation occurs
-        # > Which corresponds to any of:
-        #   - The car going too fast or too slow
-        #   - The car deviating too far from the line
-        sim_truncated = False
-
-        # ITERATE OVER THE TIME STEPS OF THE SIMULATION
-        for i_step in range(N_sim):
-            # Compute the action to apply at this time step
-            action = policy.compute_action(observation, info_dict, sim_terminated, sim_truncated)
-            # Step forward the gymnasium
-            # > This also updates the "self.current_ground_truth" dictionary
-            observation, reward, terminated, truncated, info_dict = self.step(action)
-
-            # Store the reward for this time step
-            reward_sim[this_time_index] = reward
-
-            # Store the action applied at this time step
-            drive_command_sim[this_time_index]  =  action[0]
-            delta_request_sim[this_time_index]  =  action[1]
-
-            # Store the states results from the step
-            this_time_index = this_time_index+1
-            px_sim[this_time_index]     =  self.current_ground_truth["px"]
-            py_sim[this_time_index]     =  self.current_ground_truth["py"]
-            theta_sim[this_time_index]  =  self.current_ground_truth["theta"]
-            vx_sim[this_time_index]     =  self.current_ground_truth["vx"]
-            vy_sim[this_time_index]     =  self.current_ground_truth["vy"]
-            omega_sim[this_time_index]  =  self.current_ground_truth["omega"]
-            delta_sim[this_time_index]  =  self.current_ground_truth["delta"]
-
-            road_progress_at_closest_point_sim[this_time_index]   =  self.current_ground_truth["road_progress_at_closest_point"]
-            distance_to_closest_point_sim[this_time_index]        =  self.current_ground_truth["distance_to_closest_point"]
-            heading_angle_relative_to_line_sim[this_time_index]   =  self.current_ground_truth["heading_angle_relative_to_line"]
-            road_curvature_at_closest_point_sim[this_time_index]  =  self.current_ground_truth["road_curvature_at_closest_point"]
-            px_closest_sim[this_time_index]                       =  self.current_ground_truth["px_closest"]
-            py_closest_sim[this_time_index]                       =  self.current_ground_truth["py_closest"]
-            px_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["px_closest_in_body_frame"]
-            py_closest_in_body_frame_sim[this_time_index]         =  self.current_ground_truth["py_closest_in_body_frame"]
-
-            # Check whether termination occurred
-            if terminated:
-                sim_terminated = True
-            # Check whether truncation occurred
-            if truncated:
-                sim_truncated = True
-            # End the simulation is either terminated or truncated
-            if (terminated or truncated):
-                break
-        # FINISHED ITERATING OVER THE SIMULATION TIME
-
-        # Display that the simulation is finished
-        print("Simulation finished")
-        print("\n")
-
-        # Compute the time and time indicies for returning
-        time_index_sim = np.arange(start=0, stop=N_sim+1, step=1)
-        time_in_seconds_sim = time_index_sim * self.integration_Ts
-
-        # Put all the time series into a dictionary
-        sim_time_series_dict = {
-            "terminated"  :  sim_terminated,
-            "truncated"   :  sim_truncated,
-
-            "time_in_seconds"  :  time_index_sim,
-            "time_index"       :  time_in_seconds_sim,
-
-            "reward"  : reward_sim,
-
-            "px"     :  px_sim,
-            "py"     :  py_sim,
-            "theta"  :  theta_sim,
-            "vx"     :  vx_sim,
-            "vy"     :  vy_sim,
-            "omega"  :  omega_sim,
-            "delta"  :  delta_sim,
-
-            "road_progress_at_closest_point"   :  road_progress_at_closest_point_sim,
-            "distance_to_closest_point"        :  distance_to_closest_point_sim,
-            "heading_angle_relative_to_line"   :  heading_angle_relative_to_line_sim,
-            "road_curvature_at_closest_point"  :  road_curvature_at_closest_point_sim,
-            "px_closest"                       :  px_closest_sim,
-            "py_closest"                       :  py_closest_sim,
-            "px_closest_in_body_frame"         :  px_closest_in_body_frame_sim,
-            "py_closest_in_body_frame"         :  py_closest_in_body_frame_sim,
-
-            "drive_command"  :  drive_command_sim,
-            "delta_request"  :  delta_request_sim,
-        }
-
-        # Return the results dictionary
-        return sim_time_series_dict
 
 
 

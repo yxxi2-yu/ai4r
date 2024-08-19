@@ -122,12 +122,16 @@ numerical_integration_parameters = {
 
 
 ## ----------------------------------
-#  SPECIFY THE TRUNCATION PARAMETERS
+#  SPECIFY THE TERMINATION PARAMETERS
 #  ----------------------------------
-truncation_parameters = {
+termination_parameters = {
     "speed_lower_bound"  :  (10.0/3.6),
     "speed_upper_bound"  :  (200.0/3.6),
     "distance_to_closest_point_upper_bound"  :  20.0,
+
+    "reward_speed_lower_bound"  :  -100.0,
+    "reward_speed_upper_bound"  :  -100.0,
+    "reward_distance_to_closest_point_upper_bound"  :  -100.0,
 }
 
 
@@ -181,7 +185,7 @@ observation_parameters = {
     "should_include_road_progress_at_closest_point"        :  "info",
     "should_include_vx_sensor"                             :  "info",
     "should_include_distance_to_closest_point"             :  "obs",
-    "should_include_heading_angle_relative_to_line"        :  "info",
+    "should_include_heading_angle_relative_to_line"        :  "obs",
     "should_include_heading_angular_rate_gyro"             :  "info",
     "should_include_closest_point_coords_in_body_frame"    :  "info",
     "should_include_look_ahead_line_coords_in_body_frame"  :  "info",
@@ -206,16 +210,16 @@ observation_parameters = {
     "scaling_for_look_ahead_road_curvatures"            :  1.0,
 
     "vx_sensor_bias"    : 0.0,
-    "vx_sensor_stddev"  : 0.1,
+    "vx_sensor_stddev"  : 0.0, #0.1
 
     "distance_to_closest_point_bias"    :  0.0,
-    "distance_to_closest_point_stddev"  :  0.01,
+    "distance_to_closest_point_stddev"  :  0.00, #0.01
 
     "heading_angle_relative_to_line_bias"    :  0.0,
-    "heading_angle_relative_to_line_stddev"  :  0.01,
+    "heading_angle_relative_to_line_stddev"  :  0.00, #0.01
 
     "heading_angular_rate_gyro_bias"    :  0.0,
-    "heading_angular_rate_gyro_stddev"  :  0.01,
+    "heading_angular_rate_gyro_stddev"  :  0.00,  #0.01
 
     "closest_point_coords_in_body_frame_bias"    :  0.0,
     "closest_point_coords_in_body_frame_stddev"  :  0.0,
@@ -246,7 +250,7 @@ env = gymnasium.make(
     bicycle_model_parameters=bicycle_model_parameters,
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
-    truncation_parameters=truncation_parameters,
+    termination_parameters=termination_parameters,
     initial_state_bounds=initial_state_bounds,
     observation_parameters=observation_parameters,
 )
@@ -281,7 +285,7 @@ pid_policy = PIDPolicyForAutonomousDriving()
 should_save_look_ahead_results = True
 
 # Run the simulation
-sim_time_series_results = simulate_policy(env, N_sim, pid_policy, should_save_look_ahead_results)
+sim_time_series_results = simulate_policy(env, N_sim, pid_policy, should_save_look_ahead_results, should_save_observations=True)
 
 
 
@@ -317,10 +321,72 @@ plot_details_list = plot_results_from_time_series_dict(env, sim_time_series_resu
 ## ------------------------------------------------
 #  CREATE AN ANIMATION
 #  ------------------------------------------------
-ani = env.unwrapped.render_matplotlib_animation_of_trajectory(sim_time_series_results["px"], sim_time_series_results["py"], sim_time_series_results["theta"], sim_time_series_results["delta"], numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
+if (True):
+    ani = env.unwrapped.render_matplotlib_animation_of_trajectory(sim_time_series_results["px"], sim_time_series_results["py"], sim_time_series_results["theta"], sim_time_series_results["delta"], numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
 
-ani.save(path_for_saving_figures + '/ad_animation.gif')
-print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
+    ani.save(path_for_saving_figures + '/ad_animation.gif')
+    print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
 
-#from IPython.display import HTML
-#HTML(ani.to_jshtml())
+    #from IPython.display import HTML
+    #HTML(ani.to_jshtml())
+
+
+## ------------------------------------------------
+#  PLOT THE RESULTS - TIME SERIES
+#  ------------------------------------------------
+
+# Open the figure
+fig, axs = plt.subplots(3, 1, sharex=True, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.94,"bottom":0.05})
+
+fig.set_size_inches(7, 8)
+
+this_ax_idx = -1
+
+# Plot the ...
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["obs_distance_to_closest_point"])
+# > Add the legend entry
+this_line.set_label("dist to closest")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+#axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('[meters]', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="upper right", ncol=1, labelspacing=0.1)
+
+
+# Plot the ...
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["obs_heading_angle_relative_to_line"]*(180.0/np.pi))
+# > Add the legend entry
+this_line.set_label("heading angle to line")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+#axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('[degrees]', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="upper right", ncol=1, labelspacing=0.1)
+
+# Plot the ...
+this_ax_idx = this_ax_idx + 1
+this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["obs_road_curvature_at_closest_point"])
+# > Add the legend entry
+this_line.set_label("curvature at closest")
+legend_lines = []
+legend_lines.append(this_line)
+# Set the labels:
+#axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
+axs[this_ax_idx].set_ylabel('[1/meters]', fontsize=10)
+# Add grid lines
+axs[this_ax_idx].grid(visible=True, which="both", axis="both", linestyle='--')
+# Show a legend
+axs[this_ax_idx].legend(handles=legend_lines, loc="upper right", ncol=1, labelspacing=0.1)
+
+fig.savefig(path_for_saving_figures + '/ad_obs_time_series.pdf')
+print('Saved figure: ' + path_for_saving_figures + '/ad_obs_time_series.pdf')

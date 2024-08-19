@@ -11,7 +11,7 @@ from policies.rl_policy import RLPolicy
 ## -----------------
 #  SIMULATE A POLICY
 #  -----------------
-def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False):
+def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, should_save_observations=False):
 
     # Initialise arrays for storing time series:
     reward_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
@@ -42,6 +42,15 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False):
         look_ahead_x_coords_in_body_frame  =  np.nan
         look_ahead_y_coords_in_body_frame  =  np.nan
         look_ahead_road_curvatures         =  np.nan
+
+    if (should_save_observations):
+        obs_distance_to_closest_point       =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        obs_heading_angle_relative_to_line  =  np.full([N_sim+1], np.nan, dtype=np.float32)
+        obs_road_curvature_at_closest_point =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    else:
+        obs_distance_to_closest_point       =  np.nan
+        obs_heading_angle_relative_to_line  =  np.nan
+        obs_road_curvature_at_closest_point =  np.nan
     
     drive_command_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
     delta_request_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
@@ -77,6 +86,11 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False):
         look_ahead_x_coords_in_body_frame[:,this_time_index]  =  current_ground_truth["look_ahead_line_coords_in_body_frame"][:,0]
         look_ahead_y_coords_in_body_frame[:,this_time_index]  =  current_ground_truth["look_ahead_line_coords_in_body_frame"][:,1]
         look_ahead_road_curvatures[:,this_time_index]         =  current_ground_truth["look_ahead_road_curvatures"]
+
+    if (should_save_observations):
+        obs_distance_to_closest_point[this_time_index]       =  observation.get("distance_to_closest_point", np.nan)
+        obs_heading_angle_relative_to_line[this_time_index]  =  observation.get("heading_angle_relative_to_line", np.nan)
+        obs_road_curvature_at_closest_point[this_time_index] =  observation.get("road_curvature_at_closest_point", np.nan)
 
     # Display that we are starting this simulation run
     print("\n")
@@ -134,6 +148,11 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False):
             look_ahead_y_coords_in_body_frame[:,this_time_index]  =  current_ground_truth["look_ahead_line_coords_in_body_frame"][:,1]
             look_ahead_road_curvatures[:,this_time_index]         =  current_ground_truth["look_ahead_road_curvatures"]
 
+        if (should_save_observations):
+            obs_distance_to_closest_point[this_time_index]       =  observation.get("distance_to_closest_point", np.nan)
+            obs_heading_angle_relative_to_line[this_time_index]  =  observation.get("heading_angle_relative_to_line", np.nan)
+            obs_road_curvature_at_closest_point[this_time_index] =  observation.get("road_curvature_at_closest_point", np.nan)
+
         # Check whether termination occurred
         if terminated:
             sim_terminated = True
@@ -183,6 +202,10 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False):
         "look_ahead_x_coords_in_body_frame"  :  look_ahead_x_coords_in_body_frame,
         "look_ahead_y_coords_in_body_frame"  :  look_ahead_y_coords_in_body_frame,
         "look_ahead_road_curvatures"         :  look_ahead_road_curvatures,
+
+        "obs_distance_to_closest_point"        :  obs_distance_to_closest_point,
+        "obs_heading_angle_relative_to_line"   :  obs_heading_angle_relative_to_line,
+        "obs_road_curvature_at_closest_point"  :  obs_road_curvature_at_closest_point,
 
         "drive_command"  :  drive_command_sim,
         "delta_request"  :  delta_request_sim,
