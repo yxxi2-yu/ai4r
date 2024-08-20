@@ -46,11 +46,15 @@ numerical_integration_parameters = {
     "num_steps_per_Ts" : 1,
 }
 
-# SPECIFY THE TRUNCATION PARAMETERS
-truncation_parameters = {
+# SPECIFY THE TERMINATION PARAMETERS
+termination_parameters = {
     "speed_lower_bound"  :  (10.0/3.6),
     "speed_upper_bound"  :  (200.0/3.6),
     "distance_to_closest_point_upper_bound"  :  20.0,
+
+    "reward_speed_lower_bound"  :  -100.0,
+    "reward_speed_upper_bound"  :  -100.0,
+    "reward_distance_to_closest_point_upper_bound"  :  -100.0,
 }
 
 # SPECIFY THE INITIAL STATE DISTRIBUTION
@@ -156,7 +160,7 @@ env = gymnasium.make(
     bicycle_model_parameters=bicycle_model_parameters,
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
-    truncation_parameters=truncation_parameters,
+    termination_parameters=termination_parameters,
     initial_state_bounds=initial_state_bounds,
     observation_parameters=observation_parameters,
 )
@@ -204,7 +208,7 @@ env = gymnasium.make(
     bicycle_model_parameters=bicycle_model_parameters,
     road_elements_list=road_elements_list,
     numerical_integration_parameters=numerical_integration_parameters,
-    truncation_parameters=truncation_parameters,
+    termination_parameters=termination_parameters,
     initial_state_bounds=initial_state_bounds,
     observation_parameters=observation_parameters,
 )
