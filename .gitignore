@@ -19,3 +19,7 @@ examples/saved_figures/*.gif
 
 # Ignore swp files
 *.swp
+
+# Ignore training files
+logs/
+models/
