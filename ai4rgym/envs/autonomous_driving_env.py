@@ -814,17 +814,10 @@ class AutonomousDrivingEnv(gym.Env):
         e = 10.0      # Coefficient for the linear function in the third segment
 
         # Calculate the reward separately for each interval of the speed
-        # > If (speed < 60.0); then reward is a concave quadratic
-        if speed_in_kmph < 60.0:
-            return -a * (speed_in_kmph - 60.0)**2 + b
-        # > Else If (60.0 <= speed < 120.0); then reward is a concave quadratic
-        elif 60.0 <= speed_in_kmph < 120.0:
-            return -a * (speed_in_kmph - 60.0)**2 + b
-        # > Else (120.0 <= speed); reward is linearly decreasing
+        if 0 <= speed_in_kmph < 120:
+            return -a * (speed_in_kmph - 60)**2 + b  # Quadratic function for 0 to 120 kmph with max at 60kph
         else:
-            return -e * (speed_in_kmph - 120.0)
-
-
+            return -e * (speed_in_kmph - 120)  # Linear decreasing function for speed above 120 kmph
 
     def undo_scaling(self, dict):
         # Take a copy so are not to change the input dictionary
