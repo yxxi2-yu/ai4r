@@ -19,7 +19,7 @@ class RLPolicy:
 
     def compute_action(self, observation, info_dict, terminated, truncated):
         # Call the rl model
-        action = self.rl_model.predict(observation, deterministic=True)
+        action, _ = self.rl_model.predict(observation, deterministic=True)
         # Return the action
         return action
 

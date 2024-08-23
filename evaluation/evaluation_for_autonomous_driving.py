@@ -11,7 +11,7 @@ from policies.rl_policy import RLPolicy
 ## -----------------
 #  SIMULATE A POLICY
 #  -----------------
-def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, should_save_observations=False):
+def simulate_policy(env, N_sim, policy, seed=None, should_save_look_ahead_results=False, should_save_observations=False, verbose=0):
 
     # Initialise arrays for storing time series:
     reward_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
@@ -58,7 +58,7 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, sh
     # Reset the gymnasium, which also:
     # > Provides the first observation
     # > Updates the "current_ground_truth" dictionary within the environment
-    observation, info_dict = env.reset()
+    observation, info_dict = env.reset(seed=seed)
 
     # Get the current ground truth dictionary
     current_ground_truth = env.unwrapped.get_current_ground_truth()
@@ -93,8 +93,9 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, sh
         obs_road_curvature_at_closest_point[this_time_index] =  observation.get("road_curvature_at_closest_point", np.nan)
 
     # Display that we are starting this simulation run
-    print("\n")
-    print("Now starting simulation.")
+    if (verbose > 0):
+        print("\n")
+        print("Now starting simulation.")
 
     # Initialize the flag to when termination occurs
     # > Which corresponds to the car reaching the end of the road
@@ -120,9 +121,13 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, sh
         # Store the reward for this time step
         reward_sim[this_time_index] = reward
 
+        # Get the actions from the unwrapped environment to ensure they are not adjusted
+        # by an Action Scaling wrapper, or similar.
+        this_drive_cmd, this_delta_req = env.unwrapped.car.get_action_requests()
+
         # Store the action applied at this time step
-        drive_command_sim[this_time_index]  =  action[0]
-        delta_request_sim[this_time_index]  =  action[1]
+        drive_command_sim[this_time_index]  =  this_drive_cmd
+        delta_request_sim[this_time_index]  =  this_delta_req
 
         # Store the states results from the step
         this_time_index = this_time_index+1
@@ -165,8 +170,9 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, sh
     # FINISHED ITERATING OVER THE SIMULATION TIME
 
     # Display that the simulation is finished
-    print("Simulation finished")
-    print("\n")
+    if (verbose > 0):
+        print("Simulation finished")
+        print("\n")
 
     # Compute the time and time indicies for returning
     time_index_sim = np.arange(start=0, stop=N_sim+1, step=1)
@@ -219,11 +225,11 @@ def simulate_policy(env, N_sim, policy, should_save_look_ahead_results=False, sh
 ## -----------------
 #  SIMULATE RL MODEL
 #  -----------------
-def simulate_rl_model(env, N_sim, rl_model, should_save_look_ahead_results=False):
+def simulate_rl_model(env, N_sim, rl_model, seed=None, should_save_look_ahead_results=False, should_save_observations=False, verbose=0):
     # Put the RL model into a policy class
     rl_policy = RLPolicy(rl_model)
     # Call the simluate policy function
-    sim_time_series_dict = simulate_policy(rl_policy)
+    sim_time_series_dict = simulate_policy(env, N_sim, rl_policy, seed, should_save_look_ahead_results, should_save_observations, verbose)
     # Return the results dictionary
     return sim_time_series_dict
 
@@ -253,7 +259,7 @@ def plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_fig
     # Add a title
     fig.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
     # Save the figure
-    path_and_file_name = path_for_saving_figures + "/" + "ad_road" + file_name_suffix + ".pdf"
+    path_and_file_name = path_for_saving_figures + "/" + "ad_road" + "_" + file_name_suffix + ".pdf"
     fig.savefig(path_and_file_name)
     print("Saved figure: " + path_and_file_name)
 
@@ -284,7 +290,7 @@ def plot_current_state_zoomed_in(env, path_for_saving_figures, file_name_suffix)
     # Add a title
     env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
     # Save the figure
-    path_and_file_name = path_for_saving_figures + "/" + "ad_vehicle" + file_name_suffix + ".pdf"
+    path_and_file_name = path_for_saving_figures + "/" + "ad_vehicle" + "_" + file_name_suffix + ".pdf"
     env.unwrapped.figure.savefig(path_and_file_name)
     print("Saved figure: " + path_and_file_name)
 
@@ -350,8 +356,9 @@ def plot_results_from_time_series_dict(env, sim_time_series_results, path_for_sa
     fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
 
     # Save the plot
-    fig.savefig(path_for_saving_figures + '/ad_cartesian_coords.pdf')
-    print('Saved figure: ' + path_for_saving_figures + '/ad_cartesian_coords.pdf')
+    path_and_file_name = path_for_saving_figures + "/" + "ad_cartesian_coords" + "_" + file_name_suffix + ".pdf"
+    fig.savefig(path_and_file_name)
+    print('Saved figure: ' + path_and_file_name)
 
     plot_details_list.append({
         "name"  :  "trajectory in cartesian coordinates",
@@ -518,8 +525,9 @@ def plot_results_from_time_series_dict(env, sim_time_series_results, path_for_sa
     fig.suptitle("Time series results", fontsize=12)
 
     # Save the plot
-    fig.savefig(path_for_saving_figures + '/ad_time_series.pdf')
-    print('Saved figure: ' + path_for_saving_figures + '/ad_time_series.pdf')
+    path_and_file_name = path_for_saving_figures + "/" + "ad_time_series" + "_" + file_name_suffix + ".pdf"
+    fig.savefig(path_and_file_name)
+    print('Saved figure: ' + path_and_file_name)
 
     # Append the details of this plot
     plot_details_list.append({

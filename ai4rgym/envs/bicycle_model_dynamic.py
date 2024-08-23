@@ -248,6 +248,24 @@ class BicycleModelDynamic:
 
 
 
+    def get_action_requests(self):
+        """
+        Get the value of the current action requests
+
+        Parameters
+        ----------
+            None
+
+        Returns
+        -------
+        _drive_command_request, _delta_request : float, float
+            Drive command request and the steering angle request actions.
+        """
+        # Return the actions
+        return self._drive_command_request, self._delta_request
+
+
+
     @staticmethod
     def eom_kinematic_bicycle(t, s, a, mp):
         """
