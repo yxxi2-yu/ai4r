@@ -247,7 +247,7 @@ def plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_fig
     should_plot_cones = True
     if ((width_btw_cones is None) or (mean_length_btw_cones is None) or (stddev_of_length_btw_cones is None)):
         should_plot_cones = False
-    
+
     # Call the function to generate cone locations
     if should_plot_cones:
         road.generate_cones(width_btw_cones, mean_length_btw_cones, stddev_of_length_btw_cones)

@@ -1230,7 +1230,7 @@ class AutonomousDrivingEnv(gym.Env):
             self.axis.set_xlim(xmin=px-0.5*x_width,  xmax=px+0.5*x_width)
             self.axis.set_ylim(ymin=py-0.5*y_height, ymax=py+0.5*y_height)
 
-    def render_matplotlib_animation_of_trajectory(self, px_traj, py_traj, theta_traj, delta_traj, Ts, traj_increment=1, figure_title=None):
+    def render_matplotlib_animation_of_trajectory(self, px_traj, py_traj, theta_traj, delta_traj, Ts, traj_increment=1, figure_title=None, zoom_width=20, zoom_height=20):
         # Create a figure for the animation
         fig_4_ani, axis_4_ani = plt.subplots(1, 1)
         interval_btw_frames_ms = Ts * 1000
@@ -1259,7 +1259,7 @@ class AutonomousDrivingEnv(gym.Env):
         car_handles = self.car.render_car(axis_4_ani,px_traj[0],py_traj[0],theta_traj[0],delta_traj[0],scale=1.0)
 
         # Zoom into the start position
-        self.render_matplotlib_zoom_to(px=px_traj[0],py=py_traj[0],x_width=20,y_height=20,axis_handle=axis_4_ani)
+        self.render_matplotlib_zoom_to(px=px_traj[0],py=py_traj[0],x_width=zoom_width,y_height=zoom_height,axis_handle=axis_4_ani)
 
         # Display that that animation creation is about to start
         print("Now creating the animation, this may take some time.")
@@ -1269,7 +1269,7 @@ class AutonomousDrivingEnv(gym.Env):
             # Update the car
             self.car.render_car(axis_4_ani,px_traj[i],py_traj[i],theta_traj[i],delta_traj[i],scale=1.0, plot_handles=car_handles)
             # Update the window
-            self.render_matplotlib_zoom_to(px=px_traj[i],py=py_traj[i],x_width=20,y_height=20,axis_handle=axis_4_ani)
+            self.render_matplotlib_zoom_to(px=px_traj[i],py=py_traj[i],x_width=zoom_width,y_height=zoom_height,axis_handle=axis_4_ani)
 
         # Check the length of the trajectory
         # > By checking for the first nan

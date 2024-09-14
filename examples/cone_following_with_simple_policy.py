@@ -493,7 +493,7 @@ pid_policy = PIDPolicyForConeFollowing()
 
 # Specify whether or not to save the look head results
 # > Note that this is more data that all other parts of the results combined
-should_save_look_ahead_results = True
+should_save_look_ahead_results = False
 
 # Run the simulation
 sim_time_series_results = simulate_policy(env, N_sim, pid_policy, should_save_look_ahead_results, should_save_observations=True)
@@ -533,7 +533,9 @@ plot_details_list = plot_results_from_time_series_dict(env, sim_time_series_resu
 #  CREATE AN ANIMATION
 #  ------------------------------------------------
 if (True):
-    ani = env.unwrapped.render_matplotlib_animation_of_trajectory(sim_time_series_results["px"], sim_time_series_results["py"], sim_time_series_results["theta"], sim_time_series_results["delta"], numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory")
+    ani_zoom_width=5
+    ani_zoom_height=5
+    ani = env.unwrapped.render_matplotlib_animation_of_trajectory(sim_time_series_results["px"], sim_time_series_results["py"], sim_time_series_results["theta"], sim_time_series_results["delta"], numerical_integration_parameters["Ts"], traj_increment=3, figure_title="Animation of car trajectory", zoom_width=ani_zoom_width, zoom_height=ani_zoom_height)
 
     ani.save(path_for_saving_figures + '/ad_animation.gif')
     print('Saved animation: ' + path_for_saving_figures + '/ad_animation.gif')
