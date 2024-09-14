@@ -186,6 +186,7 @@ class AutonomousDrivingEnv(gym.Env):
                 - should_include_obs_for_road_progress_at_closest_point        :  bool
                 - should_include_obs_for_road_curvature_at_closest_point       :  bool
                 - should_include_obs_for_gps_line_coords_in_world_frame        :  bool
+                - should_include_cone_detections                               :  bool
 
                 (Scaling value for each sensor measurement)
                 - scaling_for_ground_truth_state                    :  float
@@ -199,7 +200,7 @@ class AutonomousDrivingEnv(gym.Env):
                 - scaling_for_look_ahead_road_curvatures            :  float
                 - scaling_for_road_progress_at_closes_point         :  float
                 - scaling_for_road_curvature_at_closes_point        :  float
-                - scaling_for_gps_line_coords_in_world_frame        :  float
+                - scaling_for_cone_detections                       :  float
 
                 (Specifications for each sensor measurement)
                 - vx_sensor_bias   : float
@@ -219,9 +220,9 @@ class AutonomousDrivingEnv(gym.Env):
                 - look_ahead_line_coords_in_body_frame_stddev_lateral       :  float
                 - look_ahead_line_coords_in_body_frame_stddev_longitudinal  :  float
 
-
-
-
+                - cone_detections_width_btw_cones             :  float
+                - cone_detections_mean_length_btw_cones       :  float
+                - cone_detections_stddev_of_length_btw_cones  :  float
 
         Returns
         -------
@@ -332,6 +333,7 @@ class AutonomousDrivingEnv(gym.Env):
             "should_include_road_curvature_at_closest_point"       :  "obs",
             "should_include_look_ahead_road_curvatures"            :  "info",
             "should_include_gps_line_coords_in_world_frame"        :  "neither",
+            "should_include_cone_detections"                       :  "neither",
 
             "scaling_for_ground_truth_px"                       :  1.0,
             "scaling_for_ground_truth_py"                       :  1.0,
@@ -352,6 +354,7 @@ class AutonomousDrivingEnv(gym.Env):
             "scaling_for_road_curvature_at_closest_point"       :  1.0,
             "scaling_for_look_ahead_road_curvatures"            :  1.0,
             "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
+            "scaling_for_cone_detections"                       :  1.0,
 
             "vx_sensor_bias"   : 0.0,
             "vx_sensor_stddev" : 0.0, #0.1
@@ -381,6 +384,15 @@ class AutonomousDrivingEnv(gym.Env):
             "look_ahead_line_coords_in_body_frame_num_points"           :  10,
             "look_ahead_line_coords_in_body_frame_stddev_lateral"       :  0.0,
             "look_ahead_line_coords_in_body_frame_stddev_longitudinal"  :  0.0,
+
+            "cone_detections_width_btw_cones"             :  1.0,
+            "cone_detections_mean_length_btw_cones"       :  0.5,
+            "cone_detections_stddev_of_length_btw_cones"  :  0.00,
+
+            "cone_detections_fov_horizontal_degrees"         :  80.0,
+            "cone_detections_body_x_upper_bound"             :  4.0,
+            "cone_detections_stddev_of_detection_in_body_x"  :  0.00,
+            "cone_detections_stddev_of_detection_in_body_y"  :  0.00,
         }
 
 
@@ -452,6 +464,70 @@ class AutonomousDrivingEnv(gym.Env):
                 self.info_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.float32)})
             else:
                 setattr(self, "should_include_info_for_"+obs_name, False)
+
+
+
+        # OBSERVATION OF CONE DETECTIONS
+        # Note: This needs to be processed separately because there are multiple
+        # observation spaces created by the one "should_include" flag.
+
+        # Convert the "should_include_cone_detections" string to booleans
+        # > for observation
+        if self.should_include_cone_detections.lower() == "obs":
+            self.should_include_obs_for_cone_detections = True
+        else:
+            self.should_include_obs_for_cone_detections = False
+        # > For info:
+        if self.should_include_cone_detections.lower() == "info":
+            self.should_include_info_for_cone_detections = True
+        else:
+            self.should_include_info_for_cone_detections = False
+
+        # Generate the cones for the road
+        if (self.should_include_obs_for_cone_detections or self.should_include_info_for_cone_detections):
+            self.road.generate_cones(self.cone_detections_width_btw_cones, self.cone_detections_mean_length_btw_cones, self.cone_detections_stddev_of_length_btw_cones)
+
+        # > Compute a reasonable upper bound on the number of cones that could be detected
+        self.num_cones_max = int(3.0 * (1.0 + self.cone_detections_body_x_upper_bound / self.cone_detections_mean_length_btw_cones))
+        # > Specify the names for each part of the cone detection observations:
+        observations_name_low_high_shape_for_cone_detections = [
+            ["cone_detections_x"                   , -np.inf    , np.inf             , (self.num_cones_max,)],
+            ["cone_detections_y"                   , -np.inf    , np.inf             , (self.num_cones_max,)],
+        ]
+
+        # Iterate over the observation names
+        for obs_details in observations_name_low_high_shape_for_cone_detections:
+            # Extract the specs of this observation
+            obs_name  = obs_details[0]
+            obs_low   = obs_details[1]
+            obs_high  = obs_details[2]
+            obs_shape = obs_details[3]
+
+            # Process for should include in observation
+            if self.should_include_obs_for_cone_detections:
+                obs_space_dict.update({obs_name: spaces.Box(low=obs_low, high=obs_high, shape=obs_shape, dtype=np.float32)})
+                self.obs_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.float32)})
+            # Process for should include in info dict
+            if self.should_include_info_for_cone_detections:
+                self.info_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.float32)})
+
+        # Add the observation for the side of the road
+        obs_name = "cone_detections_side_of_road"
+        obs_shape = (self.num_cones_max,)
+        if self.should_include_obs_for_cone_detections:
+            obs_space_dict.update({obs_name: spaces.MultiDiscrete(nvec=[3]*self.num_cones_max, dtype=np.int32, start=[0]*self.num_cones_max)})
+            self.obs_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.int32)})
+        if self.should_include_info_for_cone_detections:
+            self.info_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.int32)})
+
+        # Add the observation for the number of cones
+        obs_name = "cone_detections_num_cones"
+        obs_shape = (1,)
+        if self.should_include_obs_for_cone_detections:
+            obs_space_dict.update({obs_name: spaces.MultiDiscrete(nvec=[self.num_cones_max+1], dtype=np.int32, start=[0])})
+            self.obs_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.int32)})
+        if self.should_include_info_for_cone_detections:
+            self.info_dict_blank.update({obs_name: np.zeros(obs_shape, dtype=np.int32)})
 
 
 
@@ -547,6 +623,12 @@ class AutonomousDrivingEnv(gym.Env):
         road_info_dict = self._get_road_info(self.look_ahead_progress_queries)
         #print(road_info_dict)
 
+        # Get the cone info for the current pose of the car (if required)
+        if (self.should_include_obs_for_cone_detections or self.should_include_info_for_cone_detections):
+            cone_info = self.road.cone_info_at_given_pose_and_fov(px=self.car.px, py=self.car.py, theta=self.car.theta, fov_horizontal_degrees=self.cone_detections_fov_horizontal_degrees, body_x_upper_bound=self.cone_detections_body_x_upper_bound)
+        else:
+            cone_info = []
+
         # Update the dictionary of ground truth values
         self.current_ground_truth["px"]     =  self.car.px
         self.current_ground_truth["py"]     =  self.car.py
@@ -598,6 +680,43 @@ class AutonomousDrivingEnv(gym.Env):
 
         look_ahead_road_curvatures_noise = np.array( np.random.normal(self.look_ahead_road_curvatures_bias, self.look_ahead_road_curvatures_stddev, (self.look_ahead_line_coords_in_body_frame_num_points,)) , dtype=np.float32)
         look_ahead_road_curvatures = (np.array(road_info_dict["curvatures"], dtype=np.float32) + look_ahead_road_curvatures_noise) * self.scaling_for_look_ahead_road_curvatures
+
+        if (self.should_include_obs_for_cone_detections or self.should_include_info_for_cone_detections):
+            # > Get the number of cones
+            num_cones = cone_info["num_cones"]
+            # > Prepare observation placeholder for zero cones
+            if (num_cones == 0):
+                cone_detections_x = np.zeros((self.num_cones_max,), dtype=np.float32)
+                cone_detections_y = np.zeros((self.num_cones_max,), dtype=np.float32)
+                cone_detections_side_of_road = np.full(shape=(self.num_cones_max,), fill_value=2, dtype=np.int32)
+                num_cones_in_obs = 0
+            # > Prepare observation for more than the maximum allowed size of the observation
+            elif (num_cones > self.num_cones_max):
+                # > Sample the noise
+                cone_detections_x_noise = np.array( np.random.normal(0.0, self.cone_detections_stddev_of_detection_in_body_x, (self.num_cones_max,)) , dtype=np.float32)
+                cone_detections_y_noise = np.array( np.random.normal(0.0, self.cone_detections_stddev_of_detection_in_body_y, (self.num_cones_max,)) , dtype=np.float32)
+                # > Build the observations
+                cone_detections_x = (cone_info["px_in_body_frame"][0:self.num_cones_max] + cone_detections_x_noise) * self.scaling_for_cone_detections
+                cone_detections_y = (cone_info["py_in_body_frame"][0:self.num_cones_max] + cone_detections_y_noise) * self.scaling_for_cone_detections
+                cone_detections_side_of_road = cone_info["side_of_road"][0:self.num_cones_max]
+                num_cones_in_obs = self.num_cones_max
+                # > Update the left-hand side of road from -1 to 0
+                cone_detections_side_of_road[cone_detections_side_of_road==-1] = 0
+             # > Prepare observation for a "situation normal" detection
+            else:
+                # > Sample the noise
+                cone_detections_x_noise = np.array( np.random.normal(0.0, self.cone_detections_stddev_of_detection_in_body_x, (num_cones,)) , dtype=np.float32)
+                cone_detections_y_noise = np.array( np.random.normal(0.0, self.cone_detections_stddev_of_detection_in_body_y, (num_cones,)) , dtype=np.float32)
+                # > Build the observations
+                padding_length = self.num_cones_max - num_cones
+                cone_detections_x = np.pad((cone_info["px_in_body_frame"]+cone_detections_x_noise) * self.scaling_for_cone_detections, (0, padding_length), mode='constant', constant_values=0.0)
+                cone_detections_y = np.pad((cone_info["py_in_body_frame"]+cone_detections_y_noise) * self.scaling_for_cone_detections, (0, padding_length), mode='constant', constant_values=0.0)
+                cone_detections_side_of_road = np.pad(cone_info["side_of_road"], (0, padding_length), mode='constant', constant_values=2)
+                num_cones_in_obs = num_cones
+                # > Update the left-hand side of road from -1 to 0
+                cone_detections_side_of_road[cone_detections_side_of_road==-1] = 0
+
+
 
         # Put the measurements values into the appropriate dictionary
         if (self.should_include_obs_for_ground_truth_px):
@@ -696,6 +815,18 @@ class AutonomousDrivingEnv(gym.Env):
             obs_dict["gps_line_coords_in_world_frame"][0]  = 0.0
         if (self.should_include_info_for_gps_line_coords_in_world_frame):
             info_dict["gps_line_coords_in_world_frame"][0] = 0.0
+
+        if (self.should_include_obs_for_cone_detections):
+            obs_dict["cone_detections_x"]  = cone_detections_x
+            obs_dict["cone_detections_y"]  = cone_detections_y
+            obs_dict["cone_detections_side_of_road"]  = cone_detections_side_of_road
+            obs_dict["cone_detections_num_cones"][0]  = num_cones_in_obs
+        if (self.should_include_info_for_cone_detections):
+            info_dict["cone_detections_x"]  = cone_detections_x
+            info_dict["cone_detections_y"]  = cone_detections_y
+            info_dict["cone_detections_side_of_road"]  = cone_detections_side_of_road
+            info_dict["cone_detections_num_cones"][0]  = num_cones_in_obs
+
 
         # Return the two dictionaries
         return obs_dict, info_dict
@@ -1106,6 +1237,17 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Plot the road
         self.road.render_road(axis_4_ani)
+
+        # If the road has cones, then plot the cones
+        # > Get the cones coordinates
+        cones_left_side_coords  = self.road.get_cones_left_side()
+        cones_right_side_coords = self.road.get_cones_right_side()
+        # > Plot the left-side cones in yellow
+        if (len(cones_left_side_coords)>0):
+            cone_handles_left_side  = axis_4_ani.scatter(x=cones_left_side_coords[:,0],  y=cones_left_side_coords[:,1],  s=8.0, marker="o", facecolor="y", alpha=1.0, linewidths=0, edgecolors="k")
+        # > Plot the right-side cones in blue
+        if (len(cones_right_side_coords)>0):
+            cone_handles_right_side = axis_4_ani.scatter(x=cones_right_side_coords[:,0], y=cones_right_side_coords[:,1], s=8.0, marker="o", facecolor="b", alpha=1.0, linewidths=0, edgecolors="k")
 
         # Add a title
         if (figure_title is None):

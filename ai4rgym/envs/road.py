@@ -32,6 +32,9 @@ class Road:
     - start_hyperplane_b_i : the offset value such that the hyperplane pass through the start point (units: m).
     - end_hyperplane_A_i   : the unit normal vector that point in the opposite direction of end angle (units: m).
     - end_hyperplane_b_i   : the offset value such that the hyperplane pass through the end point (units: m).
+
+    - cones_left_side      : (x,y) coordinates of the left-hand-side  of the road (units: m).
+    - cones_right_side     : (x,y) coordinates of the right-hand-side of the road (units: m).
     """
 
 
@@ -80,6 +83,9 @@ class Road:
         self.__end_hyperplane_A = np.empty((0,2),dtype=np.float32)
         self.__end_hyperplane_b = np.empty((0,),dtype=np.float32)
 
+        self.__cones_left_side  = np.empty((0,2),dtype=np.float32)
+        self.__cones_right_side = np.empty((0,2),dtype=np.float32)
+
         # Check if the "road_element_list" is provided
         if (road_elements_list is not None):
             # Add the road element
@@ -111,6 +117,9 @@ class Road:
     def get_start_hyperplane_b(self): return np.copy(self.__start_hyperplane_b)
     def get_end_hyperplane_A(self): return np.copy(self.__end_hyperplane_A)
     def get_end_hyperplane_b(self): return np.copy(self.__end_hyperplane_b)
+
+    def get_cones_left_side(self):  return np.copy(self.__cones_left_side)
+    def get_cones_right_side(self): return np.copy(self.__cones_right_side)
 
     def get_total_length(self):
         return self.__l_total_at_end[-1]
@@ -315,6 +324,84 @@ class Road:
         self.__start_hyperplane_b  = np.concatenate((self.__start_hyperplane_b , this_hp_start_b) , axis=0, dtype=np.float32)
         self.__end_hyperplane_A  = np.concatenate((self.__end_hyperplane_A , this_hp_end_A) , axis=0, dtype=np.float32)
         self.__end_hyperplane_b  = np.concatenate((self.__end_hyperplane_b , this_hp_end_b) , axis=0, dtype=np.float32)
+
+    def generate_cones(self, width_btw_cones=1.0, mean_length_btw_cones=0.5, stddev_of_length_btw_cones=0.0):
+        """
+        Computes the cone locations.
+
+        Note: it is assumed (and required) that this function is called
+        directly after all road elements are added.
+
+        Parameters
+        ----------
+            width_btw_cones : float
+                The width between the cones from one-side of the road
+                to the other side of the road
+
+            mean_length_btw_cones : float
+
+            stddev_of_length_btw_cones : float
+
+        Returns
+        -------
+        Nothing
+        """
+        # Generate the progress points for the cones
+        # > Initialize the arrays
+        prog_queries_for_left = np.zeros((1,),dtype=np.float32)
+        prog_queries_for_right = np.zeros((1,),dtype=np.float32)
+        # > Keep track of the "current" progress
+        current_prog = np.zeros((1,),dtype=np.float32)
+        # > Get the total road length into a local variable
+        tot_road_len = self.get_total_length()
+        # > Compute half of the width between cones
+        half_width = 0.5*width_btw_cones
+        # > Repeat for left and right
+        for road_side in [-1,1]:
+            # > Reset the current progress to zero
+            current_prog[0] = 0.0
+            # > Iterate until we get to the end of the road
+            while (current_prog[0] < (tot_road_len-mean_length_btw_cones)):
+                # > Get the curvature at the current progress
+                current_curvature = self.convert_progression_to_curvature(current_prog+0.5*mean_length_btw_cones)
+                # > Distinguish between straight and curved road
+                if (abs(current_curvature) < 0.5*self.epsilon_c):
+                    # > Compute progress step for a straight road element
+                    prog_step = np.random.normal(mean_length_btw_cones, stddev_of_length_btw_cones)
+                else:
+                    # > Compute progress step for a curved road element
+                    if (road_side < 0):
+                        this_scaling = 1.0/(1.0 - current_curvature * half_width)
+                    else:
+                        this_scaling = 1.0/(1.0 + current_curvature * half_width)
+                    prog_step = this_scaling * np.random.normal(mean_length_btw_cones, stddev_of_length_btw_cones)
+                # > Add the progress step
+                if (road_side < 0):
+                    current_prog[0] = prog_queries_for_left[-1] + prog_step
+                    prog_queries_for_left = np.concatenate((prog_queries_for_left, current_prog), axis=0, dtype=np.float32)
+                else:
+                    current_prog[0] = prog_queries_for_right[-1] + prog_step
+                    prog_queries_for_right = np.concatenate((prog_queries_for_right, current_prog), axis=0, dtype=np.float32)
+
+        # Compute the cone locations for the left-hand-side
+        # > Get the road info for the progress queries
+        road_info_for_left_side = self.road_info_at_given_pose_and_progress_queries(px=0.0, py=0.0, theta=0.0, progress_queries=prog_queries_for_left)
+        # > Get the road angles for each point, plus 90 degree for moving to the left
+        road_angles_for_left_side = road_info_for_left_side["road_angles_relative_to_body_frame"] + 0.5*np.pi
+        # > Compute the cartesian offsets for each point
+        offsets_for_left_side = half_width * np.transpose( np.vstack( (np.cos(road_angles_for_left_side),np.sin(road_angles_for_left_side)), dtype=np.float32) )
+        # > Compute the cones coordinates
+        self.__cones_left_side = road_info_for_left_side["road_points_in_body_frame"] + offsets_for_left_side
+
+        # Compute the cone locations for the left-hand-side
+        # > Get the road info for the progress queries
+        road_info_for_right_side = self.road_info_at_given_pose_and_progress_queries(px=0.0, py=0.0, theta=0.0, progress_queries=prog_queries_for_right)
+        # > Get the road angles for each point, plus 90 degree for moving to the right
+        road_angles_for_right_side = road_info_for_right_side["road_angles_relative_to_body_frame"] - 0.5*np.pi
+        # > Compute the cartesian offsets for each point
+        offsets_for_right_side = half_width * np.transpose( np.vstack( (np.cos(road_angles_for_right_side),np.sin(road_angles_for_right_side)), dtype=np.float32) )
+        # > Compute the cones coordinates
+        self.__cones_right_side = road_info_for_right_side["road_points_in_body_frame"] + offsets_for_right_side
 
 
 
@@ -707,7 +794,7 @@ class Road:
     def transform_points_2d( p , px_translate, py_translate, theta_rotate, p_translate_is_in_starting_frame=True):
         """
         Transform 2D points from one frame to another. The order of translate
-        and rotate depdned on which frame the translation vector is given in.
+        and rotate depends on which frame the translation vector is given in.
 
         If the transalation vector is expressed in the coordinates of the
         original frame (i.e., the untransformed frame), then the steps are:
@@ -876,8 +963,117 @@ class Road:
             "curvatures" : p_curvatures,
         }
 
-        # Return the pixel coordinates and the info dictionary
+        # Return the info dictionary
         return info_dict
+
+
+
+    def cone_info_at_given_pose_and_fov(self, px, py, theta, fov_horizontal_degrees=80.0, body_x_upper_bound=4.0):
+        """
+        Return the details of the cones that are visible
+
+        Parameters
+        ----------
+            px : float
+                World-frame x-axis coordinate of the robot / car (units: m).
+            py : float
+                World-frame y-axis coordinate of the robot / car (units: m).
+            theta : float
+                Heading angle of the robot / car relative to the world-frame
+                x-axis (units: radians).
+            fov_horizontal_degrees : float
+                The horizontal field of view (FOV) of a hypothetical camera, where
+                this is naive used at the FOV when projected onto the ground plane.
+                (units: degrees)
+            body_x_upper_bound : float
+                The distance in front of the car beyond which cones are excluded
+                (units: meters)
+
+        Returns
+        -------
+            cone_info_dict : dictionary
+                Containing details for the cones relative to the current
+                state of the car.
+                The properties of the info_dict are:
+                - "num_cones" : integer
+                    Number of cones visible
+                - "px", "py" : numpy array, 1-dimensional
+                    World-frame (x,y) coordinate of the cones (units: meters).
+                - "px_in_body_frame", "py_in_body_frame" : numpy array, 1-dimensional
+                    Body-frame (x,y) coordinate of the cones (units: meters).
+                - "side_of_road" : numpy array, 1-dimensional
+                    The side of the road that the cone is on (units: -1:=left-hand-side, 1:=right-hand-side).
+        """
+        # Generate hyperplanes for filtering the cones
+        # > Compute the normal for the front plane
+        a_front = np.array([[np.cos(theta),np.sin(theta)]], dtype=np.float32)
+        # > Convert the FOV to radians
+        half_fov = 0.5 * fov_horizontal_degrees * (np.pi/180.0)
+        # > Compute the normal for the left-hand edge of the cone
+        cone_left_angle = theta+half_fov+0.5*np.pi
+        a_cone_left = np.array([[np.cos(cone_left_angle),np.sin(cone_left_angle)]], dtype=np.float32)
+        # > Compute the normal for the right-hand edge of the cone
+        cone_right_angle = theta-half_fov-0.5*np.pi
+        a_cone_right = np.array([[np.cos(cone_right_angle),np.sin(cone_right_angle)]], dtype=np.float32)
+        # > Compute the constants
+        p = np.array([[px],[py]], dtype=np.float32)
+        b_front = a_front @ p
+        b_cone_left = a_cone_left @ p
+        b_cone_right = a_cone_right @ p
+        # > Stack together
+        A = np.vstack((a_front, a_cone_left, a_cone_right))
+        b = np.array([b_front[0,0]+body_x_upper_bound, b_cone_left[0,0],b_cone_right[0,0]], dtype=np.float32)
+
+        # NOTES:
+        # > Shape of "self.__cones_left_side" is num_cones -by- 2
+        # > Hence the following is compatible:
+        #       A @ tranpose(__cones_left_side) <= b
+        #   As long as b is automatically repeated
+        # Or equivalently:
+        #       __cones_left_side @ tranpose(A) <= tranpose(b)
+
+        # Check the left and right cones
+        cones_left_check  = np.logical_and.reduce( np.less_equal( np.matmul(self.__cones_left_side,  np.transpose(A)) , b ), axis=1)
+        cones_right_check = np.logical_and.reduce( np.less_equal( np.matmul(self.__cones_right_side, np.transpose(A)) , b ), axis=1)
+
+        # Extract the coordinates of the cones
+        # > For the left side
+        num_cones_left = np.sum(cones_left_check)
+        if (num_cones_left==0):
+            p_cones_left = np.empty((0,2), dtype=np.float32)
+            side_of_road_left = np.empty((0,), dtype=np.int32)
+        else:
+            p_cones_left = self.__cones_left_side[cones_left_check]
+            side_of_road_left = np.full(shape=(num_cones_left,), fill_value=-1, dtype=np.int32)
+        # > For the right side
+        num_cones_right = np.sum(cones_right_check)
+        if (num_cones_right==0):
+            p_cones_right = np.empty((0,2), dtype=np.float32)
+            side_of_road_right = np.empty((0,), dtype=np.int32)
+        else:
+            p_cones_right = self.__cones_right_side[cones_right_check]
+            side_of_road_right = np.full(shape=(num_cones_right,), fill_value=1, dtype=np.int32)
+
+        # > Stack these together
+        p_cones = np.concatenate((p_cones_left, p_cones_right), axis=0, dtype=np.float32)
+        side_of_road = np.concatenate((side_of_road_left, side_of_road_right), axis=0, dtype=np.int32)
+
+        # Transform the cone coordinates to body frame
+        p_cones_in_body_frame = Road.transform_points_2d( p_cones , px, py, theta, p_translate_is_in_starting_frame=True)
+
+        # Create an info dictionary with all the details
+        cone_info_dict = {
+            "num_cones" : (num_cones_left+num_cones_right),
+            "px" : p_cones[:,0],
+            "py" : p_cones[:,1],
+            "px_in_body_frame" : p_cones_in_body_frame[:,0],
+            "py_in_body_frame" : p_cones_in_body_frame[:,1],
+            "side_of_road" : side_of_road,
+        }
+
+        # Return the cone info dictionary
+        return cone_info_dict
+
 
 
     @staticmethod

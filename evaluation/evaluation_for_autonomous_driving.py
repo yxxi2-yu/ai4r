@@ -238,10 +238,19 @@ def simulate_rl_model(env, N_sim, rl_model, seed=None, should_save_look_ahead_re
 ## -------------
 #  PLOT THE ROAD
 #  -------------
-def plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_figures, file_name_suffix):
+def plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_figures, file_name_suffix, width_btw_cones=None, mean_length_btw_cones=None, stddev_of_length_btw_cones=None):
 
     # Initialize the road
     road = Road(road_elements_list=road_elements_list)
+
+    # Check if cones should be plotted
+    should_plot_cones = True
+    if ((width_btw_cones is None) or (mean_length_btw_cones is None) or (stddev_of_length_btw_cones is None)):
+        should_plot_cones = False
+    
+    # Call the function to generate cone locations
+    if should_plot_cones:
+        road.generate_cones(width_btw_cones, mean_length_btw_cones, stddev_of_length_btw_cones)
 
     # Open the figure
     fig, axs = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
@@ -253,13 +262,29 @@ def plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_fig
     # Call the function to render the road
     road_handles = road.render_road(axs)
 
+    # Plot the cones
+    if should_plot_cones:
+        # > Get the cones coordinates
+        cones_left_side_coords  = road.get_cones_left_side()
+        cones_right_side_coords = road.get_cones_right_side()
+        # > Plot the left-side cones in yellow
+        cone_handles_left_side  = axs.scatter(x=cones_left_side_coords[:,0],  y=cones_left_side_coords[:,1],  s=8.0, marker="o", facecolor="y", alpha=1.0, linewidths=0, edgecolors="k")
+        # > Plot the right-side cones in blue
+        cone_handles_right_side = axs.scatter(x=cones_right_side_coords[:,0], y=cones_right_side_coords[:,1], s=8.0, marker="o", facecolor="b", alpha=1.0, linewidths=0, edgecolors="k")
+
     # Ensure the aspect ratio stays as 1:1
     axs.set_aspect('equal', adjustable='box')
 
     # Add a title
-    fig.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
+    if should_plot_cones:
+        fig.suptitle('The road and cones', fontsize=12)
+    else:
+        fig.suptitle('The road, i.e., the center of the lane to be followed', fontsize=12)
     # Save the figure
-    path_and_file_name = path_for_saving_figures + "/" + "ad_road" + "_" + file_name_suffix + ".pdf"
+    if isinstance(file_name_suffix, str) and file_name_suffix == "":
+        path_and_file_name = path_for_saving_figures + "/" + "ad_road" + ".pdf"
+    else:
+        path_and_file_name = path_for_saving_figures + "/" + "ad_road" + "_" + file_name_suffix + ".pdf"
     fig.savefig(path_and_file_name)
     print("Saved figure: " + path_and_file_name)
 
@@ -270,6 +295,12 @@ def plot_road_from_list_of_road_elements(road_elements_list, path_for_saving_fig
         "axs"      :  axs,
         "handles"  :  road_handles,
     }
+
+    if should_plot_cones:
+        plot_details_list.update({
+            "cone_handles_left"   :  cone_handles_left_side,
+            "cone_handles_right"  :  cone_handles_right_side,
+        })
 
     # Return the list of plot details
     return plot_details_list
@@ -285,12 +316,25 @@ def plot_current_state_zoomed_in(env, path_for_saving_figures, file_name_suffix)
     env.unwrapped.render_matplotlib_init_figure()
     # Plot the road
     env.unwrapped.render_matplotlib_plot_road()
+    # If the road has cones, then plot the cones
+    # > Get the cones coordinates
+    cones_left_side_coords  = env.unwrapped.road.get_cones_left_side()
+    cones_right_side_coords = env.unwrapped.road.get_cones_right_side()
+    # > Plot the left-side cones in yellow
+    if (len(cones_left_side_coords)>0):
+        cone_handles_left_side  = env.unwrapped.axis.scatter(x=cones_left_side_coords[:,0],  y=cones_left_side_coords[:,1],  s=8.0, marker="o", facecolor="y", alpha=1.0, linewidths=0, edgecolors="k")
+    # > Plot the right-side cones in blue
+    if (len(cones_right_side_coords)>0):
+        cone_handles_right_side = env.unwrapped.axis.scatter(x=cones_right_side_coords[:,0], y=cones_right_side_coords[:,1], s=8.0, marker="o", facecolor="b", alpha=1.0, linewidths=0, edgecolors="k")
     # Zoom into the start position
     env.unwrapped.render_matplotlib_zoom_to(px=env.unwrapped.car.px,py=env.unwrapped.car.py,x_width=20,y_height=20)
     # Add a title
     env.unwrapped.figure.suptitle('Zoom in of the road and car', fontsize=12)
     # Save the figure
-    path_and_file_name = path_for_saving_figures + "/" + "ad_vehicle" + "_" + file_name_suffix + ".pdf"
+    if isinstance(file_name_suffix, str) and file_name_suffix == "":
+        path_and_file_name = path_for_saving_figures + "/" + "ad_vehicle" + "_" + ".pdf"
+    else:
+        path_and_file_name = path_for_saving_figures + "/" + "ad_vehicle" + "_" + file_name_suffix + ".pdf"
     env.unwrapped.figure.savefig(path_and_file_name)
     print("Saved figure: " + path_and_file_name)
 
@@ -333,6 +377,17 @@ def plot_results_from_time_series_dict(env, sim_time_series_results, path_for_sa
     road_handles[0].set_label("road")
     legend_lines.append(road_handles[0])
 
+    # If the road has cones, then plot the cones
+    # > Get the cones coordinates
+    cones_left_side_coords  = env.unwrapped.road.get_cones_left_side()
+    cones_right_side_coords = env.unwrapped.road.get_cones_right_side()
+    # > Plot the left-side cones in yellow
+    if (len(cones_left_side_coords)>0):
+        cone_handles_left_side  = axs.scatter(x=cones_left_side_coords[:,0],  y=cones_left_side_coords[:,1],  s=8.0, marker="o", facecolor="y", alpha=1.0, linewidths=0, edgecolors="k")
+    # > Plot the right-side cones in blue
+    if (len(cones_right_side_coords)>0):
+        cone_handles_right_side = axs.scatter(x=cones_right_side_coords[:,0], y=cones_right_side_coords[:,1], s=8.0, marker="o", facecolor="b", alpha=1.0, linewidths=0, edgecolors="k")
+
     # Plot the (px,py) trajectory
     this_line, = axs.plot(sim_time_series_results["px"],sim_time_series_results["py"], color="red")
     # > Add the legend entry
@@ -356,7 +411,10 @@ def plot_results_from_time_series_dict(env, sim_time_series_results, path_for_sa
     fig.suptitle("Showing the road and the (px,py) trajectory", fontsize=12)
 
     # Save the plot
-    path_and_file_name = path_for_saving_figures + "/" + "ad_cartesian_coords" + "_" + file_name_suffix + ".pdf"
+    if isinstance(file_name_suffix, str) and file_name_suffix == "":
+        path_and_file_name = path_for_saving_figures + "/" + "ad_cartesian_coords" + ".pdf"
+    else:
+        path_and_file_name = path_for_saving_figures + "/" + "ad_cartesian_coords" + "_" + file_name_suffix + ".pdf"
     fig.savefig(path_and_file_name)
     print('Saved figure: ' + path_and_file_name)
 
@@ -525,7 +583,10 @@ def plot_results_from_time_series_dict(env, sim_time_series_results, path_for_sa
     fig.suptitle("Time series results", fontsize=12)
 
     # Save the plot
-    path_and_file_name = path_for_saving_figures + "/" + "ad_time_series" + "_" + file_name_suffix + ".pdf"
+    if isinstance(file_name_suffix, str) and file_name_suffix == "":
+        path_and_file_name = path_for_saving_figures + "/" + "ad_time_series" + ".pdf"
+    else:
+        path_and_file_name = path_for_saving_figures + "/" + "ad_time_series" + "_" + file_name_suffix + ".pdf"
     fig.savefig(path_and_file_name)
     print('Saved figure: ' + path_and_file_name)
 
