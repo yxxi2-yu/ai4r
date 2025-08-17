@@ -1,6 +1,7 @@
-# Ignore pdfs in the saved figures folder
+# Ignore results in the saved figures folder
 examples/saved_figures/*.pdf
 examples/saved_figures/*.gif
+examples/saved_figures/*.csv
 
 # Ignore venv diretories
 *venv*/
@@ -23,3 +24,4 @@ examples/saved_figures/*.gif
 # Ignore training files
 logs/
 models/
+
