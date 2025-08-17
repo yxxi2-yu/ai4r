@@ -90,6 +90,19 @@ class AutonomousDrivingEnv(gym.Env):
     
     You can save the figure in the usual fashion for a matplotlb figure:
     - `env.figure.savefig('autonomous_driving.pdf')`
+
+    INTERNAL POLICIES (OPTIONAL):
+        This environment can optionally apply simple internal controllers to
+        ease training and ablations. You can enable lane keeping (steering) and
+        cruise control (longitudinal) independently and optionally inject your
+        own controller functions. Defaults are off.
+
+        - Built-in lane keeping uses lateral/heading errors and curvature
+          feedforward; gains are configurable.
+        - Built-in cruise control is a PI(D) speed controller; gains and target
+          speed are configurable.
+        - If you supply custom functions, they receive the current observation
+          dictionary (what the agent sees), not the ground truth.
     """
 
     metadata = {
@@ -106,6 +119,7 @@ class AutonomousDrivingEnv(gym.Env):
         termination_parameters,
         initial_state_bounds,
         observation_parameters,
+        internal_policy_config=None,
     ):
         """
         Initialization function for the "AutonomousDrivingGym" class.
@@ -223,6 +237,37 @@ class AutonomousDrivingEnv(gym.Env):
                 - cone_detections_width_btw_cones             :  float
                 - cone_detections_mean_length_btw_cones       :  float
                 - cone_detections_stddev_of_length_btw_cones  :  float
+
+            internal_policy_config : dict [OPTIONAL]
+                Configure internal helper policies that can override parts of the
+                action to simplify training and ablations.
+                - enable_lane_keep : bool
+                    If True, enables an internal lane-keeping controller that
+                    generates a steering request using lateral/heading error and
+                    curvature feedforward. Default False.
+                - enable_cruise_control : bool
+                    If True, enables an internal cruise controller for the
+                    longitudinal drive command. Default False.
+                - lane_keep_fn : callable(env, obs_dict) -> float
+                    Optional user-supplied steering controller. Receives the
+                    environment and the current observation dictionary
+                    (what the agent sees) and must return a steering angle
+                    request in radians. If not provided, a simple default
+                    controller based on ground truth is used when enabled.
+                - cruise_control_fn : callable(env, obs_dict) -> float
+                    Optional user-supplied longitudinal controller. Receives the
+                    environment and the current observation dictionary and must
+                    return a drive command percentage in [-100, 100]. If not
+                    provided, a simple default PI(D) controller is used when enabled.
+                - lane_keep_k_y, lane_keep_k_psi, lane_keep_k_ff : float
+                    Gains for the default lane-keeping controller. Defaults are
+                    0.40, 1.20, 0.80 respectively.
+                - cruise_target_speed_mps : float
+                    Target speed for default cruise control in m/s. Default 60/3.6.
+                - cruise_kp, cruise_ki, cruise_kd : float
+                    Gains for default cruise controller. Defaults 20.0, 5.0, 0.0.
+                - cruise_integral_limit : float
+                    Anti-windup clamp for the integral term (abs value). Default 50.0.
 
         Returns
         -------
@@ -597,6 +642,31 @@ class AutonomousDrivingEnv(gym.Env):
         # Variables for the matplotlib display
         self.figure = None
         self.axis   = None  
+
+        # INTERNAL POLICIES (OPTIONAL):
+        # Toggleable simple controllers for lane keeping and cruise control.
+        # Users can also provide custom callables via internal_policy_config.
+        ipc = internal_policy_config or {}
+        # Enable/disable flags
+        self.enable_lane_keep = bool(ipc.get("enable_lane_keep", False))
+        self.enable_cruise_control = bool(ipc.get("enable_cruise_control", False))
+        # Optional user-provided controller functions: fn(env, obs_dict) -> command
+        self.lane_keep_controller_fn = ipc.get("lane_keep_fn", None)
+        self.cruise_controller_fn = ipc.get("cruise_control_fn", None)
+        # Default lane-keeping gains and feedforward
+        self.lane_keep_gains = {
+            "k_y": ipc.get("lane_keep_k_y", 0.40),
+            "k_psi": ipc.get("lane_keep_k_psi", 1.20),
+            "k_ff": ipc.get("lane_keep_k_ff", 0.80),
+        }
+        # Cruise control target and PI gains
+        self.cruise_target_speed_mps = float(ipc.get("cruise_target_speed_mps", 60.0/3.6))
+        self.cruise_kp = float(ipc.get("cruise_kp", 20.0))
+        self.cruise_ki = float(ipc.get("cruise_ki", 5.0))
+        self.cruise_kd = float(ipc.get("cruise_kd", 0.0))
+        self._cruise_integral = 0.0
+        self._cruise_prev_error = 0.0
+        self._cruise_int_limit = float(ipc.get("cruise_integral_limit", 50.0))
         self.car_handles = []
 
 
@@ -1054,6 +1124,10 @@ class AutonomousDrivingEnv(gym.Env):
         # Set the previous progress variable
         self.previous_progress_at_closest_p = self.current_ground_truth["road_progress_at_closest_point"]
 
+        # Reset internal policy state
+        self._cruise_integral = 0.0
+        self._cruise_prev_error = 0.0
+
         # Render, if necessary
         # ...
 
@@ -1091,10 +1165,51 @@ class AutonomousDrivingEnv(gym.Env):
                 Same definition as for the "_get_info" function.
         """
 
+        # Optionally override parts of the incoming action using internal policies
+        drive_cmd = float(action[0])
+        delta_req = float(action[1])
+
+        # If any custom controller is enabled, generate an observation at the
+        # current state for the controller to use (agent-view, not GT).
+        obs_for_internal = None
+        if (
+            (self.enable_lane_keep and callable(self.lane_keep_controller_fn)) or
+            (self.enable_cruise_control and callable(self.cruise_controller_fn))
+        ):
+            try:
+                obs_for_internal, _ = self._get_observation_and_info_and_update_ground_truth()
+            except Exception:
+                obs_for_internal = None
+
+        # Lane keeping controller (steering)
+        if self.enable_lane_keep:
+            try:
+                if callable(self.lane_keep_controller_fn):
+                    # Custom lane keep consumes current observation dict
+                    delta_req = float(self.lane_keep_controller_fn(self, obs_for_internal))
+                else:
+                    delta_req = float(self._default_lane_keep_delta())
+            except Exception as e:
+                # Fail safe: keep requested action if controller errors
+                # print or log could be added here if desired
+                pass
+
+        # Cruise control controller (longitudinal drive command)
+        if self.enable_cruise_control:
+            try:
+                if callable(self.cruise_controller_fn):
+                    # Custom cruise consumes current observation dict
+                    drive_cmd = float(self.cruise_controller_fn(self, obs_for_internal))
+                else:
+                    drive_cmd = float(self._default_cruise_drive_command())
+            except Exception as e:
+                # Fail safe: keep requested action if controller errors
+                pass
+
         # Set the action request for bicycle model
         self.car.set_action_requests(
-            drive_command_request  = action[0],
-            delta_request = action[1],
+            drive_command_request  = drive_cmd,
+            delta_request = delta_req,
         )
 
         # Get the road condition
@@ -1182,6 +1297,76 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Return the observation and info dictionary
         return observation, reward, terminated, truncated, info_dict        
+
+
+    # ---------------------------
+    # INTERNAL POLICY CONTROLLERS
+    # ---------------------------
+    def _default_lane_keep_delta(self):
+        """
+        Simple lane-keeping controller that combines lateral error, heading error,
+        and a curvature feedforward term.
+
+        Returns
+        -------
+        float
+            Requested steering angle (radians), clipped to the model limits.
+        """
+        # Errors relative to road
+        y_err = float(self.current_ground_truth.get("py_closest_in_body_frame", 0.0))
+        psi_err = float(self.current_ground_truth.get("heading_angle_relative_to_line", 0.0))
+        curvature = float(self.current_ground_truth.get("road_curvature_at_closest_point", 0.0))
+
+        k_y = float(self.lane_keep_gains.get("k_y", 0.40))
+        k_psi = float(self.lane_keep_gains.get("k_psi", 1.20))
+        k_ff = float(self.lane_keep_gains.get("k_ff", 0.80))
+
+        # Feedforward based on bicycle model kinematics
+        L = float(self.car.Lf + self.car.Lr)
+        delta_ff = np.arctan(L * curvature)
+
+        delta_req = k_y * y_err + k_psi * psi_err + k_ff * delta_ff
+        # Clip to steering request bounds
+        delta_req = max(-self.car.delta_request_max, min(delta_req, self.car.delta_request_max))
+        return delta_req
+
+    def _default_cruise_drive_command(self):
+        """
+        Simple PI(D) cruise controller on longitudinal speed.
+
+        Returns
+        -------
+        float
+            Drive command percentage in [-100, 100].
+        """
+        v_target = float(self.cruise_target_speed_mps)
+        v_meas = float(self.car.vx)
+        e = v_target - v_meas
+        Ts = float(self.integration_Ts)
+
+        # PI(D) update with basic anti-windup on integral
+        self._cruise_integral += e * Ts
+        self._cruise_integral = max(-self._cruise_int_limit, min(self._cruise_integral, self._cruise_int_limit))
+        de = (e - self._cruise_prev_error) / Ts if Ts > 0 else 0.0
+        self._cruise_prev_error = e
+
+        cmd = self.cruise_kp * e + self.cruise_ki * self._cruise_integral + self.cruise_kd * de
+        # Clip to valid drive command range
+        cmd = max(-100.0, min(cmd, 100.0))
+        return cmd
+
+    # Public toggles and hooks
+    def set_lane_keep_enabled(self, enabled: bool):
+        self.enable_lane_keep = bool(enabled)
+
+    def set_cruise_control_enabled(self, enabled: bool):
+        self.enable_cruise_control = bool(enabled)
+
+    def set_lane_keep_fn(self, fn):
+        self.lane_keep_controller_fn = fn
+
+    def set_cruise_control_fn(self, fn):
+        self.cruise_controller_fn = fn
 
 
     def render_matplotlib_init_figure(self):
