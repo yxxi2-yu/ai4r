@@ -667,6 +667,20 @@ class AutonomousDrivingEnv(gym.Env):
         heading_gyro_noise = np.random.normal(self.heading_angular_rate_gyro_bias, self.heading_angular_rate_gyro_stddev)
         heading_gyro = (self.car.omega + heading_gyro_noise) * self.scaling_for_heading_angular_rate_gyro
 
+        # Compute body-frame accelerations if any accel observation/info is requested
+        accel_x_meas = None
+        accel_y_meas = None
+        if (
+            self.should_include_obs_for_accel_in_body_frame_x or self.should_include_info_for_accel_in_body_frame_x or
+            self.should_include_obs_for_accel_in_body_frame_y or self.should_include_info_for_accel_in_body_frame_y
+        ):
+            ax, ay = self.car.compute_body_frame_acceleration(
+                road_condition=self.road_condition,
+                Dp=self.D_Pacejka, Cp=self.C_Pacejka, Bp=self.B_Pacejka, Ep=self.E_Pacejka
+            )
+            accel_x_meas = ax * self.scaling_for_accel_in_body_frame_x
+            accel_y_meas = ay * self.scaling_for_accel_in_body_frame_y
+
         px_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
         py_noise = np.random.normal(self.closest_point_coords_in_body_frame_bias, self.closest_point_coords_in_body_frame_stddev)
         px_closest_in_body_frame = (road_info_dict["px_closest_in_body_frame"] + px_noise) * self.scaling_for_closest_point_coords_in_body_frame
@@ -780,14 +794,14 @@ class AutonomousDrivingEnv(gym.Env):
             info_dict["heading_angular_rate_gyro"][0] = heading_gyro
 
         if (self.should_include_obs_for_accel_in_body_frame_x):
-            obs_dict["accel_in_body_frame_x"][0]  = 0.0
+            obs_dict["accel_in_body_frame_x"][0]  = 0.0 if accel_x_meas is None else accel_x_meas
         if (self.should_include_info_for_accel_in_body_frame_x):
-            info_dict["accel_in_body_frame_x"][0] = 0.0
+            info_dict["accel_in_body_frame_x"][0] = 0.0 if accel_x_meas is None else accel_x_meas
 
         if (self.should_include_obs_for_accel_in_body_frame_y):
-            obs_dict["accel_in_body_frame_y"][0]  = 0.0
+            obs_dict["accel_in_body_frame_y"][0]  = 0.0 if accel_y_meas is None else accel_y_meas
         if (self.should_include_info_for_accel_in_body_frame_y):
-            info_dict["accel_in_body_frame_y"][0] = 0.0
+            info_dict["accel_in_body_frame_y"][0] = 0.0 if accel_y_meas is None else accel_y_meas
 
         if (self.should_include_obs_for_closest_point_coords_in_body_frame):
             obs_dict["closest_point_coords_in_body_frame"][0]  = px_closest_in_body_frame
