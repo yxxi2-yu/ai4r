@@ -1,4 +1,75 @@
+"""
+CustomRewardWrapper
+
+This module provides the CustomRewardWrapper class which reconstructs the original
+reward shaping used by the autonomous driving environment outside of the base
+environment implementation. The base environment intentionally returns zero
+(reward-less) steps; this wrapper composes a shaped reward from environment
+observables so reward logic can be configured, swapped, or tested independently
+from the environment dynamics.
+
+Key behavior
+- Reconstructs reward as a weighted sum of: progress, deviation-from-center-line,
+  speed shaping, and termination-related bonuses/penalties.
+- Uses defaults intended to mirror the previous environment: k_progress=0.0,
+  k_deviation=100.0, k_speed=1.0. All coefficients are configurable via the
+  `cfg` argument.
+- Adds an optional finished bonus and an optional timeout penalty (for
+  TimeLimit truncations).
+- Tracks previous progress internally to compute incremental progress reward.
+- When the base env returns info dictionaries, the wrapper looks for two
+  optional structures in `info`: `termination` (dict of boolean flags like
+  'off_track' / 'finished' / 'speed_high' / 'speed_low') and
+  `termination_rewards` (numeric values used for termination-related rewards).
+  If present, those values are applied on termination.
+- On truncation, if `info.get("TimeLimit.truncated")` is True, the
+  `timeout_penalty` is applied.
+
+Expected environment interface
+- The wrapped environment should expose `current_ground_truth` (a dict)
+  containing at least:
+    - 'road_progress_at_closest_point' : progress along the road at the
+      closest reference point (float-like)
+    - 'distance_to_closest_point' : distance magnitude to the center line
+      (float-like)
+- The wrapper reads the vehicle longitudinal velocity from
+  `env.car.vx` (converted to km/h internally). If these attributes are
+  missing the wrapper falls back to sensible zeros.
+
+Configuration (cfg keys)
+- k_progress (float): multiplier for progress increment (default 0.0)
+- k_deviation (float): multiplier for deviation-from-line reward (default 100.0)
+- k_speed (float): multiplier for speed-shaped reward (default 1.0)
+- finished_bonus (float): additional reward added when `termination['finished']`
+  is True (default 0.0)
+- timeout_penalty (float): penalty applied when the episode is truncated by a
+  TimeLimit (default 0.0)
+
+Usage examples
+- Wrap an environment with default shaping:
+    env = AutonomousDrivingEnv(...)  # environment that exposes expected attrs
+    env = CustomRewardWrapper(env)
+
+- Customize coefficients:
+    cfg = { 'k_deviation': 50.0, 'k_speed': 0.5, 'finished_bonus': 100.0 }
+    env = CustomRewardWrapper(env, cfg=cfg)
+
+- Typical step/return semantics remain: step(action) -> (obs, reward, terminated,
+  truncated, info). The wrapper returns the reconstructed scalar reward as the
+  second element.
+
+Notes and tips
+- If you want to disable any shaped term, set its coefficient to 0 in `cfg`.
+- The wrapper assumes the base environment's own reward is not needed. If your
+  environment does provide a meaningful reward, wrapping will add the shaped
+  reward on top of it (the current implementation assumes base env reward is
+  zero but does not explicitly subtract it).
+- The wrapper tracks `_prev_progress` across steps and resets it on `reset()`.
+
+"""
+
 import gymnasium as gym
+from typing import Optional
 
 
 class CustomRewardWrapper(gym.Wrapper):
@@ -9,7 +80,7 @@ class CustomRewardWrapper(gym.Wrapper):
     out of the env and makes it configurable/replaceable.
     """
 
-    def __init__(self, env: gym.Env, cfg: dict | None = None):
+    def __init__(self, env: gym.Env, cfg: Optional[dict] = None):
         super().__init__(env)
         self.cfg = cfg or {}
         # Coefficients for previous env reward composition
