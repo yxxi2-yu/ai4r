@@ -1117,37 +1117,49 @@ class AutonomousDrivingEnv(gym.Env):
         # Compute the speed of the car
         car_speed = np.sqrt(self.car.vx**2 + self.car.vy**2)
 
-        # Compute the "terminated" flag
+        # Compute the "terminated" flag and reasons
         terminated = False
         termination_reward = 0.0
+        terminated_due_to_finish = False
+        terminated_due_to_speed_high = False
+        terminated_due_to_speed_low = False
+        terminated_due_to_offtrack = False
         if (progress_at_closest_point >= self.total_road_length_for_termination):
-            #print("(prog,tot_len) = ( " + str(info_dict["progress_at_closest_p"]) + " , " + str(self.total_road_length) + " )" )
             terminated = True
+            terminated_due_to_finish = True
         # > Terminate for being outside of the speed range
         if (car_speed > self.termination_speed_upper_bound):
             terminated = True
-            termination_reward += self.termination_reward_for_speed_upper_bound
+            terminated_due_to_speed_high = True
+            # termination_reward += self.termination_reward_for_speed_upper_bound
         if (car_speed < self.termination_speed_lower_bound):
             terminated = True
-            termination_reward += self.termination_reward_for_speed_lower_bound
+            terminated_due_to_speed_low = True
+            # termination_reward += self.termination_reward_for_speed_lower_bound
         # > Terminate for deviating too much from the line
         if (abs(distance_to_closest_point) > self.termination_distance_to_closest_point_upper_bound):
             terminated = True
-            termination_reward += self.termination_reward_for_distance_to_closest_point_upper_bound
+            terminated_due_to_offtrack = True
+            # termination_reward += self.termination_reward_for_distance_to_closest_point_upper_bound
+
+        # Expose termination reasons and configured magnitudes for wrapper use
+        info_dict["termination"] = {
+            "finished": terminated_due_to_finish,
+            "speed_high": terminated_due_to_speed_high,
+            "speed_low": terminated_due_to_speed_low,
+            "off_track": terminated_due_to_offtrack,
+        }
+        info_dict["termination_rewards"] = {
+            "speed_upper_bound": self.termination_reward_for_speed_upper_bound,
+            "speed_lower_bound": self.termination_reward_for_speed_lower_bound,
+            "off_track": self.termination_reward_for_distance_to_closest_point_upper_bound,
+        }
 
         # Compute the "truncated" flag
         truncated = False
 
-        # Set the reward
-        # > Reward positive change in progress in this time-step
-        progress_reward = progress_at_closest_point - self.previous_progress_at_closest_p
-        # > Penalize deviating from the line
-        deviation_reward = AutonomousDrivingEnv.compute_default_reward_for_distance_to_line(d=abs(distance_to_closest_point))
-        # > Penalize deviating from the desired speed range
-        speed_reward = AutonomousDrivingEnv.compute_default_reward_for_speed(speed_in_kmph=(self.car.vx*3.6))
-
-        # Sum together the reward components
-        reward = 0.0 * progress_reward + 100.0 * deviation_reward + 1.0 * speed_reward + termination_reward
+        # Set the reward to zero; reward shaping to be done in a wrapper
+        reward = 0.0
         self.previous_progress_at_closest_p = progress_at_closest_point
 
         # Render, if necessary
