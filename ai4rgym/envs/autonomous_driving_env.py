@@ -379,6 +379,9 @@ class AutonomousDrivingEnv(gym.Env):
             "should_include_look_ahead_road_curvatures"            :  "info",
             "should_include_gps_line_coords_in_world_frame"        :  "neither",
             "should_include_cone_detections"                       :  "neither",
+            # Speed observations at current progress
+            "should_include_speed_limit"                           :  "obs",
+            "should_include_recommended_speed"                     :  "obs",
 
             "scaling_for_ground_truth_px"                       :  1.0,
             "scaling_for_ground_truth_py"                       :  1.0,
@@ -400,6 +403,9 @@ class AutonomousDrivingEnv(gym.Env):
             "scaling_for_look_ahead_road_curvatures"            :  1.0,
             "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
             "scaling_for_cone_detections"                       :  1.0,
+            # Speed scalings (m/s)
+            "scaling_for_speed_limit"                           :  1.0,
+            "scaling_for_recommended_speed"                     :  1.0,
 
             "vx_sensor_bias"   : 0.0,
             "vx_sensor_stddev" : 0.0, #0.1
@@ -473,7 +479,9 @@ class AutonomousDrivingEnv(gym.Env):
             ["look_ahead_line_coords_in_body_frame" , -np.inf    , np.inf    , (2,self.look_ahead_line_coords_in_body_frame_num_points) ],
             ["road_curvature_at_closest_point"      , -np.inf    , np.inf    , (1,) ],
             ["look_ahead_road_curvatures"           , -np.inf    , np.inf    , (self.look_ahead_line_coords_in_body_frame_num_points,) ],
-            ["gps_line_coords_in_world_frame"       , -np.inf    , np.inf    , (1,) ]
+            ["gps_line_coords_in_world_frame"       , -np.inf    , np.inf    , (1,) ],
+            ["speed_limit"                          , -np.inf    , np.inf    , (1,) ],
+            ["recommended_speed"                    , -np.inf    , np.inf    , (1,) ],
         ]
 
 
@@ -762,6 +770,10 @@ class AutonomousDrivingEnv(gym.Env):
         road_curvature_noise = np.random.normal(self.road_curvature_at_closest_point_bias, self.road_curvature_at_closest_point_stddev)
         road_curvature_at_closest_point = (road_info_dict["curvature_at_closest_p"] + road_curvature_noise) * self.scaling_for_road_curvature_at_closest_point
 
+        # Speed limits and recommended speeds at current progress (m/s)
+        speed_limit = road_info_dict.get("speed_limit_at_closest_p", 0.0) * self.scaling_for_speed_limit
+        recommended_speed = road_info_dict.get("recommended_speed_at_closest_p", 0.0) * self.scaling_for_recommended_speed
+
         look_ahead_road_curvatures_noise = np.array( np.random.normal(self.look_ahead_road_curvatures_bias, self.look_ahead_road_curvatures_stddev, (self.look_ahead_line_coords_in_body_frame_num_points,)) , dtype=np.float32)
         look_ahead_road_curvatures = (np.array(road_info_dict["curvatures"], dtype=np.float32) + look_ahead_road_curvatures_noise) * self.scaling_for_look_ahead_road_curvatures
 
@@ -889,6 +901,15 @@ class AutonomousDrivingEnv(gym.Env):
             obs_dict["road_curvature_at_closest_point"][0]  = road_curvature_at_closest_point
         if (self.should_include_info_for_road_curvature_at_closest_point):
             info_dict["road_curvature_at_closest_point"][0] = road_curvature_at_closest_point
+        # Add speeds (current progress)
+        if (self.should_include_obs_for_speed_limit):
+            obs_dict["speed_limit"][0] = speed_limit
+        if (self.should_include_info_for_speed_limit):
+            info_dict["speed_limit"][0] = speed_limit
+        if (self.should_include_obs_for_recommended_speed):
+            obs_dict["recommended_speed"][0] = recommended_speed
+        if (self.should_include_info_for_recommended_speed):
+            info_dict["recommended_speed"][0] = recommended_speed
 
         if (self.should_include_obs_for_look_ahead_road_curvatures):
             obs_dict["look_ahead_road_curvatures"]  = look_ahead_road_curvatures
