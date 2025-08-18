@@ -74,9 +74,29 @@ If you enable a policy without providing a function, a simple default is used:
     - `lane_keep_k_ff` (default 0.80)
 
 - Cruise control: PI(D) on longitudinal speed
-  - Target: `cruise_target_speed_mps` (default 60 km/h)
+  - Target: either a fixed `cruise_target_speed_mps` (default 60 km/h) or the
+    road’s `recommended_speed_at_closest_point` if you set
+    `cruise_use_recommended_speed=True`.
   - Gains: `cruise_kp=20.0`, `cruise_ki=5.0`, `cruise_kd=0.0`
   - Integral clamp: `cruise_integral_limit=50.0`
+
+### Cruise Target Options
+
+You can switch the default cruise target from a fixed value to the road-recommended target derived from curvature and the segment’s speed limit:
+
+```python
+internal_policy_config = {
+    "enable_cruise_control": True,
+    # Use the road’s recommended speed at the closest point (m/s)
+    "cruise_use_recommended_speed": True,
+    # Fallback fixed target if recommended is unavailable
+    "cruise_target_speed_mps": 60.0/3.6,
+}
+```
+
+When enabled, the built-in controller uses the latest
+`recommended_speed_at_closest_point` produced by the road interface. If that value
+is missing or non-finite, it falls back to `cruise_target_speed_mps`.
 
 ## Tuning Guidance
 
@@ -95,4 +115,3 @@ If you enable a policy without providing a function, a simple default is used:
 
 - Custom controllers consume the current observation snapshot created at the start of `step()`; the observation returned by `step()` is at the next state and may include new measurement noise.
 - Internal defaults can use ground truth internally (for simplicity), but your custom functions are fed the agent’s observation dictionary.
-

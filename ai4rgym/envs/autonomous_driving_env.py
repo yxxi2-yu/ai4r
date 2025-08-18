@@ -264,6 +264,10 @@ class AutonomousDrivingEnv(gym.Env):
                     0.40, 1.20, 0.80 respectively.
                 - cruise_target_speed_mps : float
                     Target speed for default cruise control in m/s. Default 60/3.6.
+                - cruise_use_recommended_speed : bool
+                    If True, uses the road's recommended speed at the closest point
+                    as the cruise target each step; falls back to `cruise_target_speed_mps`
+                    if unavailable. Default False.
                 - cruise_kp, cruise_ki, cruise_kd : float
                     Gains for default cruise controller. Defaults 20.0, 5.0, 0.0.
                 - cruise_integral_limit : float
@@ -616,6 +620,8 @@ class AutonomousDrivingEnv(gym.Env):
             "distance_to_closest_point"        :  0.0,
             "heading_angle_relative_to_line"   :  0.0,
             "road_curvature_at_closest_point"  :  0.0,
+            "speed_limit_at_closest_point"     :  0.0,
+            "recommended_speed_at_closest_point" :  0.0,
 
             "px_closest"  :  0.0,
             "py_closest"  :  0.0,
@@ -669,6 +675,8 @@ class AutonomousDrivingEnv(gym.Env):
         }
         # Cruise control target and PI gains
         self.cruise_target_speed_mps = float(ipc.get("cruise_target_speed_mps", 60.0/3.6))
+        # Option: use recommended speed at closest point as the cruise target
+        self.cruise_use_recommended_speed = bool(ipc.get("cruise_use_recommended_speed", True))
         self.cruise_kp = float(ipc.get("cruise_kp", 20.0))
         self.cruise_ki = float(ipc.get("cruise_ki", 5.0))
         self.cruise_kd = float(ipc.get("cruise_kd", 0.0))
@@ -729,6 +737,9 @@ class AutonomousDrivingEnv(gym.Env):
 
         self.current_ground_truth["look_ahead_line_coords_in_body_frame"]  =  road_info_dict["road_points_in_body_frame"]
         self.current_ground_truth["look_ahead_road_curvatures"]            =  road_info_dict["curvatures"]
+        # Speed limits and recommended speeds (ground truth at closest point)
+        self.current_ground_truth["speed_limit_at_closest_point"]          =  road_info_dict.get("speed_limit_at_closest_p", 0.0)
+        self.current_ground_truth["recommended_speed_at_closest_point"]    =  road_info_dict.get("recommended_speed_at_closest_p", 0.0)
 
         # Compute the measurement values
         road_progress_at_closest_point = road_info_dict["progress_at_closest_p"] * self.scaling_for_road_progress_at_closest_point
@@ -1360,7 +1371,13 @@ class AutonomousDrivingEnv(gym.Env):
         float
             Drive command percentage in [-100, 100].
         """
-        v_target = float(self.cruise_target_speed_mps)
+        # Choose target speed (m/s)
+        if getattr(self, "cruise_use_recommended_speed", False):
+            v_rec = float(self.current_ground_truth.get("recommended_speed_at_closest_point", 0.0))
+            # Fallback to configured target if recommended is unavailable
+            v_target = v_rec if np.isfinite(v_rec) and v_rec > 0.0 else float(self.cruise_target_speed_mps)
+        else:
+            v_target = float(self.cruise_target_speed_mps)
         v_meas = float(self.car.vx)
         e = v_target - v_meas
         Ts = float(self.integration_Ts)
