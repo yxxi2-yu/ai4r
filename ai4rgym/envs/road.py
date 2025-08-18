@@ -15,6 +15,7 @@ class Road:
     Quantities that fully specify each road element
     - c_i : the curvature of the road element (units: 1/m).
     - l_i : the length of the road element (units: m).
+    - v_max_i : the maximum speed limit for the road element (stored in m/s, defaults to 100 km/h).
 
     From c_i and l_i, the following quantities are computed:
     - phi_i      : the angular span of curved road elements as theta_i = l_i * c_i, equal to NaN for a straight-line element (units: radians)
@@ -22,6 +23,7 @@ class Road:
 
     Additional quantities are derived from the above values as they are convenient for the
     functions that process the road:
+    - v_rec_i            : the recommended speed for the road element, computed as a function of curvature and v_max (units: m/s).
     - start_point_i        : (x,y) coordinates of the start of the road element (units: m).
     - end_point_i          : (x,y) coordinates of the end   of the road element (units: m).
     - start_angle_i        : angle (relative to world frame x-axis) of the tangent to the road element at its start point (units: radians).
@@ -35,6 +37,14 @@ class Road:
 
     - cones_left_side      : (x,y) coordinates of the left-hand-side  of the road (units: m).
     - cones_right_side     : (x,y) coordinates of the right-hand-side of the road (units: m).
+
+    Speed properties
+    - The maximum speed (v_max) is a base property per element stored in m/s.
+      Input via `road_elements_list` or the `add_road_element_*` methods is in km/h
+      and defaults to 100 km/h (converted internally to m/s).
+    - The recommended speed (v_rec) is a derived property per element computed
+      from curvature and v_max using a helper. A simple physical heuristic is used
+      that limits lateral acceleration; see `compute_recommended_speed`.
     """
 
 
@@ -69,9 +79,13 @@ class Road:
         self.__l = np.empty((0,),dtype=np.float32)
         self.__phi = np.empty((0,),dtype=np.float32)
         self.__isStraight = np.empty((0,),dtype=np.bool_)
+        # Maximum speed per element (base property, units: m/s). Defaults to NaN.
+        self.__v_max = np.empty((0,),dtype=np.float32)
 
         # Initialize empty vectors for the derived properties of the road elements
         # > As private class variables
+        # Recommended speed per element (derived, units: m/s). Defaults to NaN until computed.
+        self.__v_rec = np.empty((0,),dtype=np.float32)
         self.__start_points = np.empty((0,2),dtype=np.float32)
         self.__end_points = np.empty((0,2),dtype=np.float32)
         self.__start_angles = np.empty((0,),dtype=np.float32)
@@ -90,13 +104,14 @@ class Road:
         if (road_elements_list is not None):
             # Add the road element
             for element in road_elements_list:
+                v_max_kph = element.get("v_max_kph", 100)
                 if (element["type"] == "straight"):
-                    self.add_road_element_straight(element["length"])
+                    self.add_road_element_straight(length=element["length"], v_max_kph=v_max_kph)
                 elif (element["type"] == "curved"):
                     if ("angle_in_degrees" in element):
-                        self.add_road_element_curved_by_angle(curvature=element["curvature"], angle_in_degrees=element["angle_in_degrees"])
+                        self.add_road_element_curved_by_angle(curvature=element["curvature"], angle_in_degrees=element["angle_in_degrees"], v_max_kph=v_max_kph)
                     elif ("length" in element):
-                        self.add_road_element_curved_by_length(curvature=element["curvature"], length=element["length"])
+                        self.add_road_element_curved_by_length(curvature=element["curvature"], length=element["length"], v_max_kph=v_max_kph)
                     else:
                         print("ERROR: curved road element specification is invalid, element = " + str(element))
                 else:
@@ -117,6 +132,8 @@ class Road:
     def get_start_hyperplane_b(self): return np.copy(self.__start_hyperplane_b)
     def get_end_hyperplane_A(self): return np.copy(self.__end_hyperplane_A)
     def get_end_hyperplane_b(self): return np.copy(self.__end_hyperplane_b)
+    def get_v_max(self): return np.copy(self.__v_max)
+    def get_v_recommended(self): return np.copy(self.__v_rec)
 
     def get_cones_left_side(self):  return np.copy(self.__cones_left_side)
     def get_cones_right_side(self): return np.copy(self.__cones_right_side)
@@ -124,7 +141,7 @@ class Road:
     def get_total_length(self):
         return self.__l_total_at_end[-1]
 
-    def add_road_element_straight(self, length=100):
+    def add_road_element_straight(self, length=100, v_max_kph=100):
         """
         Appends a straight-line road element to the end of the current road.
 
@@ -132,6 +149,8 @@ class Road:
         ----------
             length : float
                 The length of the road element to be added (units: m).
+            v_max_kph : float
+                Maximum speed for this element in km/h (default: 100). Stored internally in m/s.
 
         Returns
         -------
@@ -147,13 +166,17 @@ class Road:
         self.__l   = np.append(self.__l  , length)
         self.__phi = np.append(self.__phi, np.nan)
         self.__isStraight = np.append(self.__isStraight, True)
+        # Initialize speed properties for this element
+        v_max_mps = np.float32(v_max_kph) * (1000.0/3600.0)
+        self.__v_max = np.append(self.__v_max, v_max_mps)
+        self.__v_rec = np.append(self.__v_rec, np.nan)
 
         # Compute the derived properties for this element
         self.__add_derived_properties_of_road_element((self.__c.shape[0]-1))
 
 
 
-    def add_road_element_curved_by_length(self, curvature=1/100, length=100):
+    def add_road_element_curved_by_length(self, curvature=1/100, length=100, v_max_kph=100):
         """
         Appends a circular-arc road element to the end of the current road, with
         length specified by distance along the arc that the road element traces.
@@ -165,6 +188,8 @@ class Road:
                 inverse of the radius (units: 1/m).
             length : float
                 The arc length of the circular road element to be added (units: m).
+            v_max_kph : float
+                Maximum speed for this element in km/h (default: 100). Stored internally in m/s.
 
         Returns
         -------
@@ -190,8 +215,8 @@ class Road:
 
         if (angular_span >= (179.0*np.pi/180.0)):
             print("WARNING: Curved road element specified with angular span of " + "{:.1f}".format(angular_span*(180.0/np.pi)) + " [degrees]. Splitting this into two separate curved element")
-            self.add_road_element_curved_by_length(curvature=curvature, length=(0.5*length))
-            self.add_road_element_curved_by_length(curvature=curvature, length=(0.5*length))
+            self.add_road_element_curved_by_length(curvature=curvature, length=(0.5*length), v_max_kph=v_max_kph)
+            self.add_road_element_curved_by_length(curvature=curvature, length=(0.5*length), v_max_kph=v_max_kph)
             return
 
         # Append the details of this element
@@ -199,13 +224,17 @@ class Road:
         self.__l   = np.append(self.__l  , length)
         self.__phi = np.append(self.__phi, angular_span)
         self.__isStraight = np.append(self.__isStraight, False)
+        # Initialize speed properties for this element
+        v_max_mps = np.float32(v_max_kph) * (1000.0/3600.0)
+        self.__v_max = np.append(self.__v_max, v_max_mps)
+        self.__v_rec = np.append(self.__v_rec, np.nan)
 
         # Compute the derived properties for this element
         self.__add_derived_properties_of_road_element((self.__c.shape[0]-1))
 
 
 
-    def add_road_element_curved_by_angle(self, curvature=1/100, angle_in_degrees=45):
+    def add_road_element_curved_by_angle(self, curvature=1/100, angle_in_degrees=45, v_max_kph=100):
         """
         Appends a circular-arc road element to the end of the current road, with
         length specified by the anglar span of the arc.
@@ -219,6 +248,8 @@ class Road:
                 Angular span of the circular arc from start to end of the road
                 element (units: degrees).
                 Note: arc length = angular span (in radians) * radius
+            v_max_kph : float
+                Maximum speed for this element in km/h (default: 100). Stored internally in m/s.
 
         Returns
         -------
@@ -231,12 +262,12 @@ class Road:
 
         if (angle_in_degrees >= 179.0):
             print("WARNING: Curved road element specified with angular span of " + "{:.1f}".format(angle_in_degrees) + " [degrees]. Splitting this into two separate curved element")
-            self.add_road_element_curved_by_angle(curvature=curvature, angle_in_degrees=(0.5*angle_in_degrees))
-            self.add_road_element_curved_by_angle(curvature=curvature, angle_in_degrees=(0.5*angle_in_degrees))
+            self.add_road_element_curved_by_angle(curvature=curvature, angle_in_degrees=(0.5*angle_in_degrees), v_max_kph=v_max_kph)
+            self.add_road_element_curved_by_angle(curvature=curvature, angle_in_degrees=(0.5*angle_in_degrees), v_max_kph=v_max_kph)
             return
 
         # Convert the angle to arc length and call the other function
-        self.add_road_element_curved_by_length( curvature=curvature, length=(np.pi/180)*angle_in_degrees/abs(curvature))
+        self.add_road_element_curved_by_length( curvature=curvature, length=(np.pi/180)*angle_in_degrees/abs(curvature), v_max_kph=v_max_kph)
 
 
 
@@ -324,6 +355,125 @@ class Road:
         self.__start_hyperplane_b  = np.concatenate((self.__start_hyperplane_b , this_hp_start_b) , axis=0, dtype=np.float32)
         self.__end_hyperplane_A  = np.concatenate((self.__end_hyperplane_A , this_hp_end_A) , axis=0, dtype=np.float32)
         self.__end_hyperplane_b  = np.concatenate((self.__end_hyperplane_b , this_hp_end_b) , axis=0, dtype=np.float32)
+
+        # Update recommended speed for this element if v_max is available
+        if (self.__v_max.shape[0] > for_index):
+            v_max_i = self.__v_max[for_index]
+            c_i = self.__c[for_index]
+            self.__v_rec[for_index:for_index+1] = np.array([
+                Road.compute_recommended_speed(c_i, v_max_i)
+            ], dtype=np.float32)
+
+    @staticmethod
+    def compute_recommended_speed(curvature, max_speed):
+        """
+        Compute a recommended speed (m/s) given curvature (1/m) and maximum speed (m/s).
+
+        Method:
+        1) Map curvature kappa to radius r = 1/|kappa|.
+        2) Lookup a signed operating speed (km/h) from a stepwise radius→speed table,
+           where each interval maps to the nearest lower posted sign speed.
+        3) Convert to m/s and cap by the provided max_speed.
+
+        Reference: https://austroads.gov.au/publications/road-design/agrd03 (Australian Road Design Guide)
+
+        Notes:
+        - If either input is NaN or v_max <= 0, returns NaN.
+        - For |curvature| ~ 0, returns v_max (straight line).
+        """
+        try:
+            # Validate max_speed
+            if max_speed is None or np.isnan(max_speed) or (max_speed <= 0):
+                return np.float32(np.nan)
+
+            # Handle curvature
+            if curvature is None or (isinstance(curvature, float) and np.isnan(curvature)):
+                return np.float32(np.nan)
+
+            kappa = float(curvature)
+            if abs(kappa) < 1e-12:
+                # Essentially straight road
+                return np.float32(max_speed)
+
+            # Radius from curvature
+            radius_m = 1.0 / abs(kappa)
+
+            # Reference breakpoints (radius m -> signed speed km/h)
+            radii_ref = np.array([
+                10, 12, 20, 30, 35,
+                45, 65, 80, 100, 120,
+                140, 190, 235, 280, 330,
+                385, 490
+            ], dtype=float)
+
+            speeds_ref = np.array([
+                15, 20, 30, 35, 40,
+                50, 55, 60, 65, 70,
+                75, 80, 85, 90, 95,
+                100, 110
+            ], dtype=float)  # km/h
+
+            # Stepwise mapping: round DOWN to nearest reference
+            if radius_m <= radii_ref[0]:
+                speed_kmh = speeds_ref[0]
+            elif radius_m >= radii_ref[-1]:
+                speed_kmh = speeds_ref[-1]
+            else:
+                # Find rightmost ref radius <= radius_m
+                idx = np.searchsorted(radii_ref, radius_m, side="right") - 1
+                speed_kmh = speeds_ref[idx]
+
+            # Convert to m/s and cap by max_speed
+            speed_mps = speed_kmh / 3.6
+            return np.float32(min(max_speed, speed_mps))
+
+        except Exception:
+            return np.float32(np.nan)
+
+    def set_max_speeds(self, v_max_array):
+        """
+        Set per-element maximum speeds (m/s) and update recommended speeds accordingly.
+
+        Parameters
+        ----------
+            v_max_array : numpy array-like, shape (num_elements,)
+                Maximum speeds to assign to each road element (units: m/s).
+
+        Returns
+        -------
+        Nothing
+        """
+        v_max_array = np.array(v_max_array, dtype=np.float32).reshape(-1)
+        if v_max_array.shape[0] != self.__c.shape[0]:
+            print("ERROR: Length of v_max_array does not match number of road elements.")
+            return
+        self.__v_max = np.copy(v_max_array)
+        # Recompute recommended speeds for all elements
+        self.recompute_recommended_speeds()
+
+    def set_max_speed_for_element(self, index, v_max_value):
+        """
+        Set the maximum speed (m/s) for a specific element and update its recommended speed.
+        """
+        if (index < 0) or (index >= self.__c.shape[0]):
+            print("ERROR: index out of range for road elements.")
+            return
+        self.__v_max[index] = np.float32(v_max_value)
+        self.__v_rec[index] = Road.compute_recommended_speed(self.__c[index], self.__v_max[index])
+
+    def recompute_recommended_speeds(self):
+        """
+        Recompute recommended speeds for all elements based on curvature and per-element v_max.
+        """
+        # Ensure arrays exist and have correct length
+        if self.__v_rec.shape[0] != self.__c.shape[0]:
+            # Resize/initialize if needed (e.g., when loaded from older state)
+            self.__v_rec = np.full_like(self.__c, np.nan, dtype=np.float32)
+        if self.__v_max.shape[0] != self.__c.shape[0]:
+            self.__v_max = np.full_like(self.__c, np.nan, dtype=np.float32)
+        # Compute elementwise
+        for i in range(self.__c.shape[0]):
+            self.__v_rec[i] = Road.compute_recommended_speed(self.__c[i], self.__v_max[i])
 
     def generate_cones(self, width_btw_cones=1.0, mean_length_btw_cones=0.5, stddev_of_length_btw_cones=0.0):
         """
@@ -911,8 +1061,18 @@ class Road:
                 - "curvatures" : numpy array, 1-dimensional
                     Curvature of the road at each of the progress query points.
                     A 1-dimensional numpy array with: size = number of query points.
+                - "speed_limits" : numpy array, 1-dimensional
+                    Speed limits (v_max) at each of the progress query points (units: m/s).
+                    A 1-dimensional numpy array with: size = number of query points.
+                - "recommended_speeds" : numpy array, 1-dimensional
+                    Recommended speeds (v_rec) at each of the progress query points (units: m/s).
+                    A 1-dimensional numpy array with: size = number of query points.
+                - "speed_limit_at_closest_p" : float
+                    Speed limit (v_max) at the closest point (units: m/s).
+                - "recommended_speed_at_closest_p" : float
+                    Recommended speed (v_rec) at the closest point (units: m/s).
 
-                Units: all length in meters, all angles in radians.
+                Units: all lengths in meters, all angles in radians, all speeds in m/s.
         """
         # Compute the closest point on the road
         px_closest, py_closest, closest_distance, side_of_the_road_line, progress_at_closest_p, road_angle_at_closest_p, closest_element_idx = self.find_closest_point_to(px=px, py=py)
@@ -941,6 +1101,8 @@ class Road:
 
         # Get the curvature at the progression queries
         p_curvatures = self.convert_progression_to_curvature(prog_queries_from_start)
+        # Get speed limits and recommended speeds at the progression queries
+        p_speed_limits, p_recommended_speeds = self.convert_progression_to_speed_limits(prog_queries_from_start)
 
         # Create an info dictionary with all the extra details
         info_dict = {
@@ -961,10 +1123,55 @@ class Road:
             "road_points_in_body_frame" : p_coords_in_body_frame,
             "road_angles_relative_to_body_frame" : p_angles_relative_to_body_frame,
             "curvatures" : p_curvatures,
+            "speed_limits" : p_speed_limits,
+            "recommended_speeds" : p_recommended_speeds,
+            "speed_limit_at_closest_p" : self.__v_max[closest_element_idx] if self.__v_max.shape[0] > 0 else np.float32(np.nan),
+            "recommended_speed_at_closest_p" : self.__v_rec[closest_element_idx] if self.__v_rec.shape[0] > 0 else np.float32(np.nan),
         }
 
         # Return the info dictionary
         return info_dict
+
+    def convert_progression_to_speed_limits(self, progression_queries):
+        """
+        Retrieves the speed limits and recommended speeds at points along the road
+        where the length of whole road equals the query value(s).
+
+        Parameters
+        ----------
+            progression_queries : numpy array
+                Values of road progression at which to sample speeds (units: m).
+
+        Returns
+        -------
+            p_speed_limits : numpy array (m/s)
+            p_recommended_speeds : numpy array (m/s)
+        """
+        num_queries = len(progression_queries)
+        p_speed_limits = np.zeros((num_queries,), dtype=np.float32)
+        p_recommended_speeds = np.zeros((num_queries,), dtype=np.float32)
+
+        if self.__l_total_at_end.shape[0] == 0:
+            return p_speed_limits, p_recommended_speeds
+
+        # Compute the index of the road element for each progression value
+        road_idxs = np.searchsorted(self.__l_total_at_end, progression_queries, side="left", sorter=None)
+
+        for i_prog in np.arange(0, num_queries):
+            this_prog = progression_queries[i_prog]
+            this_road_idx = road_idxs[i_prog]
+
+            # Beyond end of road: hold last element's speeds
+            if (this_road_idx == len(self.__l_total_at_end)):
+                this_road_idx = len(self.__l_total_at_end) - 1
+            # Before start of road: clamp to first element
+            elif (this_prog < 0.0):
+                this_road_idx = 0
+
+            p_speed_limits[i_prog] = self.__v_max[this_road_idx] if self.__v_max.shape[0] > 0 else np.float32(np.nan)
+            p_recommended_speeds[i_prog] = self.__v_rec[this_road_idx] if self.__v_rec.shape[0] > 0 else np.float32(np.nan)
+
+        return p_speed_limits, p_recommended_speeds
 
 
 

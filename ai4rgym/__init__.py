@@ -7,7 +7,6 @@ register(
     reward_threshold=None,
     nondeterministic=False,
     order_enforce=True,
-    autoreset=False,
 )
 
 # register(
@@ -17,7 +16,6 @@ register(
 #     reward_threshold=None,
 #     nondeterministic=False,
 #     order_enforce=True,
-#     autoreset=False,
 # )
 
 # register(
@@ -27,7 +25,6 @@ register(
 #    reward_threshold=None,
 #    nondeterministic=False,
 #    order_enforce=True,
-#    autoreset=False,
 # )
 
 # register(
@@ -37,5 +34,4 @@ register(
 #     reward_threshold=None,
 #     nondeterministic=False,
 #     order_enforce=True,
-#     autoreset=False,
 # )

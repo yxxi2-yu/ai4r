@@ -574,6 +574,48 @@ class BicycleModelDynamic:
 
 
 
+    def compute_body_frame_acceleration(self, road_condition=None, Dp=None, Cp=None, Bp=None, Ep=None):
+        """
+        Compute instantaneous body-frame accelerations (ax, ay) in m/s^2 from the
+        current state and actions, using the blended equations of motion.
+
+        Parameters
+        ----------
+        road_condition : Optional[str]
+            If provided, temporarily set tire parameters for this computation.
+            Options: { "dry", "wet", "snow", "ice", "other" }.
+        Dp, Cp, Bp, Ep : Optional[float]
+            Pacejka parameters used only when road_condition == "other".
+
+        Returns
+        -------
+        ax, ay : float, float
+            Longitudinal and lateral accelerations in the body frame (m/s^2).
+        """
+        # Build state and action vectors
+        s = np.array([self.px, self.py, self.theta, self.vx, self.vy, self.omega, self.delta], dtype=np.float32)
+        a = np.array([self._Fcmd, self._Ddelta], dtype=np.float32)
+
+        # Get model params and optionally update tire params to match road condition
+        mp = self.model_params_for_eom
+        if (road_condition is not None):
+            if (road_condition == "dry"):
+                mp["Dp"], mp["Cp"], mp["Bp"], mp["Ep"] = self.Dp_dry, self.Cp_dry, self.Bp_dry, self.Ep_dry
+            elif (road_condition == "wet"):
+                mp["Dp"], mp["Cp"], mp["Bp"], mp["Ep"] = self.Dp_wet, self.Cp_wet, self.Bp_wet, self.Ep_wet
+            elif (road_condition == "snow"):
+                mp["Dp"], mp["Cp"], mp["Bp"], mp["Ep"] = self.Dp_snow, self.Cp_snow, self.Bp_snow, self.Ep_snow
+            elif (road_condition == "ice"):
+                mp["Dp"], mp["Cp"], mp["Bp"], mp["Ep"] = self.Dp_ice, self.Cp_ice, self.Bp_ice, self.Ep_ice
+            elif (road_condition == "other"):
+                mp["Dp"], mp["Cp"], mp["Bp"], mp["Ep"] = Dp, Cp, Bp, Ep
+
+        # Evaluate EOM to get s_dot and extract body-frame accelerations
+        s_dot = self.eom_kinematic_bicycle(0, s, a, mp)
+        ax = float(s_dot[3])
+        ay = float(s_dot[4])
+        return ax, ay
+
     def render_car(self, axis_handle, px, py, theta, delta, scale=1.0, plot_handles=None):
         """
         Plot the road.
