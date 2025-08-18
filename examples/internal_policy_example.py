@@ -154,6 +154,7 @@ def main():
         "enable_lane_keep": True,
         "enable_cruise_control": True,
         # Adjust target speed and gains as needed
+        "cruise_use_recommended_speed": True,
         "cruise_target_speed_mps": 60.0 / 3.6,
         # "lane_keep_k_y": 0.40, "lane_keep_k_psi": 1.20, "lane_keep_k_ff": 0.80,
     }
