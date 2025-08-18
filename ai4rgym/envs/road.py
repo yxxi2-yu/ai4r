@@ -1021,8 +1021,18 @@ class Road:
                 - "curvatures" : numpy array, 1-dimensional
                     Curvature of the road at each of the progress query points.
                     A 1-dimensional numpy array with: size = number of query points.
+                - "speed_limits" : numpy array, 1-dimensional
+                    Speed limits (v_max) at each of the progress query points (units: m/s).
+                    A 1-dimensional numpy array with: size = number of query points.
+                - "recommended_speeds" : numpy array, 1-dimensional
+                    Recommended speeds (v_rec) at each of the progress query points (units: m/s).
+                    A 1-dimensional numpy array with: size = number of query points.
+                - "speed_limit_at_closest_p" : float
+                    Speed limit (v_max) at the closest point (units: m/s).
+                - "recommended_speed_at_closest_p" : float
+                    Recommended speed (v_rec) at the closest point (units: m/s).
 
-                Units: all length in meters, all angles in radians.
+                Units: all lengths in meters, all angles in radians, all speeds in m/s.
         """
         # Compute the closest point on the road
         px_closest, py_closest, closest_distance, side_of_the_road_line, progress_at_closest_p, road_angle_at_closest_p, closest_element_idx = self.find_closest_point_to(px=px, py=py)
@@ -1051,6 +1061,8 @@ class Road:
 
         # Get the curvature at the progression queries
         p_curvatures = self.convert_progression_to_curvature(prog_queries_from_start)
+        # Get speed limits and recommended speeds at the progression queries
+        p_speed_limits, p_recommended_speeds = self.convert_progression_to_speed_limits(prog_queries_from_start)
 
         # Create an info dictionary with all the extra details
         info_dict = {
@@ -1071,10 +1083,55 @@ class Road:
             "road_points_in_body_frame" : p_coords_in_body_frame,
             "road_angles_relative_to_body_frame" : p_angles_relative_to_body_frame,
             "curvatures" : p_curvatures,
+            "speed_limits" : p_speed_limits,
+            "recommended_speeds" : p_recommended_speeds,
+            "speed_limit_at_closest_p" : self.__v_max[closest_element_idx] if self.__v_max.shape[0] > 0 else np.float32(np.nan),
+            "recommended_speed_at_closest_p" : self.__v_rec[closest_element_idx] if self.__v_rec.shape[0] > 0 else np.float32(np.nan),
         }
 
         # Return the info dictionary
         return info_dict
+
+    def convert_progression_to_speed_limits(self, progression_queries):
+        """
+        Retrieves the speed limits and recommended speeds at points along the road
+        where the length of whole road equals the query value(s).
+
+        Parameters
+        ----------
+            progression_queries : numpy array
+                Values of road progression at which to sample speeds (units: m).
+
+        Returns
+        -------
+            p_speed_limits : numpy array (m/s)
+            p_recommended_speeds : numpy array (m/s)
+        """
+        num_queries = len(progression_queries)
+        p_speed_limits = np.zeros((num_queries,), dtype=np.float32)
+        p_recommended_speeds = np.zeros((num_queries,), dtype=np.float32)
+
+        if self.__l_total_at_end.shape[0] == 0:
+            return p_speed_limits, p_recommended_speeds
+
+        # Compute the index of the road element for each progression value
+        road_idxs = np.searchsorted(self.__l_total_at_end, progression_queries, side="left", sorter=None)
+
+        for i_prog in np.arange(0, num_queries):
+            this_prog = progression_queries[i_prog]
+            this_road_idx = road_idxs[i_prog]
+
+            # Beyond end of road: hold last element's speeds
+            if (this_road_idx == len(self.__l_total_at_end)):
+                this_road_idx = len(self.__l_total_at_end) - 1
+            # Before start of road: clamp to first element
+            elif (this_prog < 0.0):
+                this_road_idx = 0
+
+            p_speed_limits[i_prog] = self.__v_max[this_road_idx] if self.__v_max.shape[0] > 0 else np.float32(np.nan)
+            p_recommended_speeds[i_prog] = self.__v_rec[this_road_idx] if self.__v_rec.shape[0] > 0 else np.float32(np.nan)
+
+        return p_speed_limits, p_recommended_speeds
 
 
 
