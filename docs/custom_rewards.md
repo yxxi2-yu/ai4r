@@ -7,7 +7,7 @@ The `CustomRewardWrapper` class reconstructs the original reward shaping used by
 - Reconstructs reward as a weighted sum of:
   - **Progress**
   - **Deviation-from-center-line**
-  - **Speed shaping**
+  - **Speed shaping** (quadratic around the road’s recommended speed, in m/s)
   - **Termination-related bonuses/penalties**
 - Uses defaults intended to mirror the previous environment:
   - `k_progress=0.0`
@@ -29,13 +29,13 @@ The wrapped environment should expose `current_ground_truth` (a dictionary) cont
 - `road_progress_at_closest_point`: Progress along the road at the closest reference point (float-like).
 - `distance_to_closest_point`: Distance magnitude to the center line (float-like).
 
-The wrapper reads the vehicle's longitudinal velocity from `env.car.vx` (converted to km/h internally). If these attributes are missing, the wrapper defaults to zeros.
+The wrapper reads the vehicle's longitudinal velocity from `env.car.vx` (m/s) and the road’s recommended speed from `env.current_ground_truth['recommended_speed_at_closest_point']` (m/s). If these attributes are missing, the wrapper defaults to zeros.
 
 ## Configuration (`cfg` Keys)
 
 - `k_progress` (float): Multiplier for progress increment (default: `0.0`).
 - `k_deviation` (float): Multiplier for deviation-from-line reward (default: `100.0`).
-- `k_speed` (float): Multiplier for speed-shaped reward (default: `1.0`).
+- `k_speed` (float): Multiplier for speed-shaped reward (default: `1.0`). The speed term is a quadratic centered at the road’s recommended speed (m/s).
 - `finished_bonus` (float): Additional reward added when `termination['finished']` is `True` (default: `0.0`).
 - `timeout_penalty` (float): Penalty applied when the episode is truncated by a TimeLimit (default: `0.0`).
 
@@ -63,6 +63,12 @@ Typical step/return semantics remain:
 step(action) -> (obs, reward, terminated, truncated, info)
 ```
 The wrapper returns the reconstructed scalar reward as the second element.
+
+## Speed Shaping Details
+
+- The speed component uses m/s throughout and rewards speeds close to the road’s recommended speed at the current position.
+- The shape is quadratic around the recommended speed: `-a * (v - v_rec)^2 + b` with `a ≈ 0.006` and `b = 300` by default.
+- Exceeding the posted speed limit is not penalized here by default; you can add an additional penalty term in your own logic if desired.
 
 ## Notes and Tips
 

@@ -32,9 +32,10 @@ Expected environment interface
       closest reference point (float-like)
     - 'distance_to_closest_point' : distance magnitude to the center line
       (float-like)
-- The wrapper reads the vehicle longitudinal velocity from
-  `env.car.vx` (converted to km/h internally). If these attributes are
-  missing the wrapper falls back to sensible zeros.
+- The wrapper reads the vehicle longitudinal velocity from `env.car.vx` and
+  the road-recommended speed from `env.current_ground_truth['recommended_speed_at_closest_point']`.
+  Both are in SI units (m/s). If these attributes are missing the wrapper
+  falls back to sensible zeros.
 
 Configuration (cfg keys)
 - k_progress (float): multiplier for progress increment (default 0.0)
@@ -112,17 +113,24 @@ class CustomRewardWrapper(gym.Wrapper):
             return -c * (d - 2) ** 3
 
     @staticmethod
-    def reward_for_speed(speed_in_kmph: float) -> float:
+    def reward_for_speed(speed_mps: float, recommended_speed_mps: float) -> float:
         """
-        Mirror AutonomousDrivingEnv.compute_default_reward_for_speed.
+        Quadratic speed reward centered on the road’s recommended speed.
+
+        - Inputs and output use SI units (m/s).
+        - Returns a high reward near the recommended speed and decreases
+          quadratically as the measured speed deviates from it.
+        
+        NOTE: you could optionally factor in the speed limit to apply 
+        an additional penalty for exceeding it.
         """
-        a = 1.0 / 12.0
+        # If no recommendation is available, return neutral reward (0.0)
+        if not (recommended_speed_mps is not None) or recommended_speed_mps <= 0:
+            return 0.0
+        a = 6.0 / 1000.0  # ≈ 0.006, a simple fraction that works well
         b = 300.0
-        e = 10.0
-        if 0 <= speed_in_kmph < 120:
-            return -a * (speed_in_kmph - 60) ** 2 + b
-        else:
-            return -e * (speed_in_kmph - 120)
+        dv = float(speed_mps) - float(recommended_speed_mps)
+        return -a * (dv ** 2) + b
 
     def step(self, action):
         obs, base_r, terminated, truncated, info = self.env.step(action)
@@ -143,12 +151,12 @@ class CustomRewardWrapper(gym.Wrapper):
         progress_reward = progress_at_closest_point - self._prev_progress
         self._prev_progress = progress_at_closest_point
 
-        # Speed shaping used body vx converted to km/h
-        vx = float(getattr(getattr(self.env, "car", None), "vx", 0.0))
-        speed_kmph = vx * 3.6
+        # Speed shaping (m/s) relative to road recommended speed (m/s)
+        vx_mps = float(getattr(getattr(self.env, "car", None), "vx", 0.0))
+        recommended_speed_mps = float(gt.get("recommended_speed_at_closest_point", 0.0))
 
         deviation_reward = self.reward_for_distance_to_line(distance_to_closest_point)
-        speed_reward = self.reward_for_speed(speed_kmph)
+        speed_reward = self.reward_for_speed(vx_mps, recommended_speed_mps)
 
         r += self.k_progress * progress_reward
         r += self.k_deviation * deviation_reward
