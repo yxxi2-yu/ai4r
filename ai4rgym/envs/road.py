@@ -369,24 +369,64 @@ class Road:
         """
         Compute a recommended speed (m/s) given curvature (1/m) and maximum speed (m/s).
 
-        The heuristic limits lateral acceleration to a comfortable bound and caps
-        the result by the provided max speed:
-            v_rec = min(v_max, sqrt(a_lat_max / |curvature|)) for |curvature| > 0
-            v_rec = v_max for curvature == 0
+        Method:
+        1) Map curvature kappa to radius r = 1/|kappa|.
+        2) Lookup a signed operating speed (km/h) from a stepwise radius→speed table,
+           where each interval maps to the nearest lower posted sign speed.
+        3) Convert to m/s and cap by the provided max_speed.
+
+        Reference: https://austroads.gov.au/publications/road-design/agrd03 (Australian Road Design Guide)
 
         Notes:
-        - If either input is NaN or non-positive for v_max, the function returns NaN.
-        - The lateral-acceleration limit is set to 2.0 m/s^2.
+        - If either input is NaN or v_max <= 0, returns NaN.
+        - For |curvature| ~ 0, returns v_max (straight line).
         """
         try:
+            # Validate max_speed
             if max_speed is None or np.isnan(max_speed) or (max_speed <= 0):
                 return np.float32(np.nan)
+
+            # Handle curvature
+            if curvature is None or (isinstance(curvature, float) and np.isnan(curvature)):
+                return np.float32(np.nan)
+
             kappa = float(curvature)
             if abs(kappa) < 1e-12:
+                # Essentially straight road
                 return np.float32(max_speed)
-            a_lat_max = 2.0  # m/s^2, comfortable lateral acceleration
-            v_curve = np.sqrt(max(0.0, a_lat_max / abs(kappa)))
-            return np.float32(min(max_speed, v_curve))
+
+            # Radius from curvature
+            radius_m = 1.0 / abs(kappa)
+
+            # Reference breakpoints (radius m -> signed speed km/h)
+            radii_ref = np.array([
+                10, 12, 20, 30, 35,
+                45, 65, 80, 100, 120,
+                140, 190, 235, 280, 330,
+                385, 490
+            ], dtype=float)
+
+            speeds_ref = np.array([
+                15, 20, 30, 35, 40,
+                50, 55, 60, 65, 70,
+                75, 80, 85, 90, 95,
+                100, 110
+            ], dtype=float)  # km/h
+
+            # Stepwise mapping: round DOWN to nearest reference
+            if radius_m <= radii_ref[0]:
+                speed_kmh = speeds_ref[0]
+            elif radius_m >= radii_ref[-1]:
+                speed_kmh = speeds_ref[-1]
+            else:
+                # Find rightmost ref radius <= radius_m
+                idx = np.searchsorted(radii_ref, radius_m, side="right") - 1
+                speed_kmh = speeds_ref[idx]
+
+            # Convert to m/s and cap by max_speed
+            speed_mps = speed_kmh / 3.6
+            return np.float32(min(max_speed, speed_mps))
+
         except Exception:
             return np.float32(np.nan)
 
