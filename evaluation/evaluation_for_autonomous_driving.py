@@ -24,14 +24,17 @@ def simulate_policy(env, N_sim, policy, seed=None, should_save_look_ahead_result
     omega_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
     delta_sim = np.full([N_sim+1,], np.nan, dtype=np.float32)
 
-    road_progress_at_closest_point_sim   =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    distance_to_closest_point_sim        =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    heading_angle_relative_to_line_sim   =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    road_curvature_at_closest_point_sim  =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    px_closest_sim                       =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    py_closest_sim                       =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    px_closest_in_body_frame_sim         =  np.full([N_sim+1], np.nan, dtype=np.float32)
-    py_closest_in_body_frame_sim         =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    road_progress_at_closest_point_sim     =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    distance_to_closest_point_sim          =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    heading_angle_relative_to_line_sim     =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    road_curvature_at_closest_point_sim    =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    speed_limit_at_closest_point_sim       =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    recommended_speed_at_closest_point_sim =  np.full([N_sim+1], np.nan, dtype=np.float32)
+
+    px_closest_sim                         =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    py_closest_sim                         =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    px_closest_in_body_frame_sim           =  np.full([N_sim+1], np.nan, dtype=np.float32)
+    py_closest_in_body_frame_sim           =  np.full([N_sim+1], np.nan, dtype=np.float32)
 
     if (should_save_look_ahead_results):
         look_ahead_length = env.unwrapped.look_ahead_progress_queries.size
@@ -73,14 +76,17 @@ def simulate_policy(env, N_sim, policy, seed=None, should_save_look_ahead_result
     omega_sim[this_time_index]  =  current_ground_truth["omega"]
     delta_sim[this_time_index]  =  current_ground_truth["delta"]
 
-    road_progress_at_closest_point_sim[this_time_index]   =  current_ground_truth["road_progress_at_closest_point"]
-    distance_to_closest_point_sim[this_time_index]        =  current_ground_truth["distance_to_closest_point"]
-    heading_angle_relative_to_line_sim[this_time_index]   =  current_ground_truth["heading_angle_relative_to_line"]
-    road_curvature_at_closest_point_sim[this_time_index]  =  current_ground_truth["road_curvature_at_closest_point"]
-    px_closest_sim[this_time_index]                       =  current_ground_truth["px_closest"]
-    py_closest_sim[this_time_index]                       =  current_ground_truth["py_closest"]
-    px_closest_in_body_frame_sim[this_time_index]         =  current_ground_truth["px_closest_in_body_frame"]
-    py_closest_in_body_frame_sim[this_time_index]         =  current_ground_truth["py_closest_in_body_frame"]
+    road_progress_at_closest_point_sim[this_time_index]      =  current_ground_truth["road_progress_at_closest_point"]
+    distance_to_closest_point_sim[this_time_index]           =  current_ground_truth["distance_to_closest_point"]
+    heading_angle_relative_to_line_sim[this_time_index]      =  current_ground_truth["heading_angle_relative_to_line"]
+    road_curvature_at_closest_point_sim[this_time_index]     =  current_ground_truth["road_curvature_at_closest_point"]
+    speed_limit_at_closest_point_sim[this_time_index]        =  current_ground_truth["speed_limit_at_closest_point"]
+    recommended_speed_at_closest_point_sim[this_time_index]  =  current_ground_truth["recommended_speed_at_closest_point"]
+
+    px_closest_sim[this_time_index]                          =  current_ground_truth["px_closest"]
+    py_closest_sim[this_time_index]                          =  current_ground_truth["py_closest"]
+    px_closest_in_body_frame_sim[this_time_index]            =  current_ground_truth["px_closest_in_body_frame"]
+    py_closest_in_body_frame_sim[this_time_index]            =  current_ground_truth["py_closest_in_body_frame"]
 
     if (should_save_look_ahead_results):
         look_ahead_x_coords_in_body_frame[:,this_time_index]  =  current_ground_truth["look_ahead_line_coords_in_body_frame"][:,0]
@@ -139,14 +145,17 @@ def simulate_policy(env, N_sim, policy, seed=None, should_save_look_ahead_result
         omega_sim[this_time_index]  =  current_ground_truth["omega"]
         delta_sim[this_time_index]  =  current_ground_truth["delta"]
 
-        road_progress_at_closest_point_sim[this_time_index]   =  current_ground_truth["road_progress_at_closest_point"]
-        distance_to_closest_point_sim[this_time_index]        =  current_ground_truth["distance_to_closest_point"]
-        heading_angle_relative_to_line_sim[this_time_index]   =  current_ground_truth["heading_angle_relative_to_line"]
-        road_curvature_at_closest_point_sim[this_time_index]  =  current_ground_truth["road_curvature_at_closest_point"]
-        px_closest_sim[this_time_index]                       =  current_ground_truth["px_closest"]
-        py_closest_sim[this_time_index]                       =  current_ground_truth["py_closest"]
-        px_closest_in_body_frame_sim[this_time_index]         =  current_ground_truth["px_closest_in_body_frame"]
-        py_closest_in_body_frame_sim[this_time_index]         =  current_ground_truth["py_closest_in_body_frame"]
+        road_progress_at_closest_point_sim[this_time_index]      =  current_ground_truth["road_progress_at_closest_point"]
+        distance_to_closest_point_sim[this_time_index]           =  current_ground_truth["distance_to_closest_point"]
+        heading_angle_relative_to_line_sim[this_time_index]      =  current_ground_truth["heading_angle_relative_to_line"]
+        road_curvature_at_closest_point_sim[this_time_index]     =  current_ground_truth["road_curvature_at_closest_point"]
+        speed_limit_at_closest_point_sim[this_time_index]        =  current_ground_truth["speed_limit_at_closest_point"]
+        recommended_speed_at_closest_point_sim[this_time_index]  =  current_ground_truth["recommended_speed_at_closest_point"]
+
+        px_closest_sim[this_time_index]                          =  current_ground_truth["px_closest"]
+        py_closest_sim[this_time_index]                          =  current_ground_truth["py_closest"]
+        px_closest_in_body_frame_sim[this_time_index]            =  current_ground_truth["px_closest_in_body_frame"]
+        py_closest_in_body_frame_sim[this_time_index]            =  current_ground_truth["py_closest_in_body_frame"]
 
         if (should_save_look_ahead_results):
             look_ahead_x_coords_in_body_frame[:,this_time_index]  =  current_ground_truth["look_ahead_line_coords_in_body_frame"][:,0]
@@ -196,14 +205,17 @@ def simulate_policy(env, N_sim, policy, seed=None, should_save_look_ahead_result
         "omega"  :  omega_sim,
         "delta"  :  delta_sim,
 
-        "road_progress_at_closest_point"   :  road_progress_at_closest_point_sim,
-        "distance_to_closest_point"        :  distance_to_closest_point_sim,
-        "heading_angle_relative_to_line"   :  heading_angle_relative_to_line_sim,
-        "road_curvature_at_closest_point"  :  road_curvature_at_closest_point_sim,
-        "px_closest"                       :  px_closest_sim,
-        "py_closest"                       :  py_closest_sim,
-        "px_closest_in_body_frame"         :  px_closest_in_body_frame_sim,
-        "py_closest_in_body_frame"         :  py_closest_in_body_frame_sim,
+        "road_progress_at_closest_point"      :  road_progress_at_closest_point_sim,
+        "distance_to_closest_point"           :  distance_to_closest_point_sim,
+        "heading_angle_relative_to_line"      :  heading_angle_relative_to_line_sim,
+        "road_curvature_at_closest_point"     :  road_curvature_at_closest_point_sim,
+        "speed_limit_at_closest_point"        :  speed_limit_at_closest_point_sim,
+        "recommended_speed_at_closest_point"  :  recommended_speed_at_closest_point_sim,
+
+        "px_closest"                          :  px_closest_sim,
+        "py_closest"                          :  py_closest_sim,
+        "px_closest_in_body_frame"            :  px_closest_in_body_frame_sim,
+        "py_closest_in_body_frame"            :  py_closest_in_body_frame_sim,
 
         "look_ahead_x_coords_in_body_frame"  :  look_ahead_x_coords_in_body_frame,
         "look_ahead_y_coords_in_body_frame"  :  look_ahead_y_coords_in_body_frame,
@@ -500,6 +512,10 @@ def plot_results_from_time_series_dict(env, sim_time_series_results, path_for_sa
     # > Add the legend entry
     this_line.set_label("forwards velocity (vx)")
     legend_lines = []
+    legend_lines.append(this_line)
+    # Plot the "recommended speed" time series
+    this_line, = axs[this_ax_idx].plot(sim_time_series_results["time_in_seconds"],sim_time_series_results["recommended_speed_at_closest_point"]*3.6)
+    this_line.set_label("recommended speed")
     legend_lines.append(this_line)
     # Set the labels:
     #axs[this_ax_idx].set_xlabel('time [seconds]', fontsize=10)
