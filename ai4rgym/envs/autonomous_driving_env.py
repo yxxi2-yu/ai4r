@@ -286,11 +286,9 @@ class AutonomousDrivingEnv(gym.Env):
         #   - Requested steering angle.
         #     Range between plus/minus car_parameters["delta_request_max"]
         #     Units: radians
-        self.action_space = spaces.Box(
-            low =np.array([-100.0, -bicycle_model_parameters["delta_request_max"]]),
-            high=np.array([ 100.0,  bicycle_model_parameters["delta_request_max"]]),
-            shape=(2,), dtype=np.float32
-        )
+        action_space_low  = np.array([-100.0, -bicycle_model_parameters["delta_request_max"]], dtype=np.float32)
+        action_space_high = np.array([ 100.0,  bicycle_model_parameters["delta_request_max"]], dtype=np.float32)
+        self.action_space = spaces.Box(low=action_space_low, high=action_space_high, dtype=np.float32)
 
         # > For readability, would we use a dictionary,...
         #   HOWEVER, action space dictionaries are not compatible with
@@ -371,21 +369,26 @@ class AutonomousDrivingEnv(gym.Env):
             "should_include_ground_truth_omega"                    :  "info",
             "should_include_ground_truth_delta"                    :  "info",
             "should_include_road_progress_at_closest_point"        :  "info",
-            "should_include_vx_sensor"                             :  "info",
+            "should_include_vx_sensor"                             :  "obs",
             "should_include_distance_to_closest_point"             :  "obs",
-            "should_include_heading_angle_relative_to_line"        :  "obs",
+            "should_include_heading_angle_relative_to_line"        :  "info",
             "should_include_heading_angular_rate_gyro"             :  "info",
             "should_include_accel_in_body_frame_x"                 :  "neither",
             "should_include_accel_in_body_frame_y"                 :  "neither",
             "should_include_closest_point_coords_in_body_frame"    :  "info",
             "should_include_look_ahead_line_coords_in_body_frame"  :  "info",
-            "should_include_road_curvature_at_closest_point"       :  "obs",
+            "should_include_road_curvature_at_closest_point"       :  "info",
             "should_include_look_ahead_road_curvatures"            :  "info",
             "should_include_gps_line_coords_in_world_frame"        :  "neither",
             "should_include_cone_detections"                       :  "neither",
             # Speed observations at current progress
-            "should_include_speed_limit"                           :  "obs",
+            "should_include_speed_limit"                           :  "info",
             "should_include_recommended_speed"                     :  "obs",
+            # Next speed change observations
+            "should_include_next_speed_limit"                      :  "info",
+            "should_include_distance_to_next_speed_limit"          :  "info",
+            "should_include_next_recommended_speed"                :  "info",
+            "should_include_distance_to_next_recommended_speed"    :  "info",
 
             "scaling_for_ground_truth_px"                       :  1.0,
             "scaling_for_ground_truth_py"                       :  1.0,
@@ -407,9 +410,14 @@ class AutonomousDrivingEnv(gym.Env):
             "scaling_for_look_ahead_road_curvatures"            :  1.0,
             "scaling_for_gps_line_coords_in_world_frame"        :  1.0,
             "scaling_for_cone_detections"                       :  1.0,
-            # Speed scalings (m/s)
+            # Speed scalings
             "scaling_for_speed_limit"                           :  1.0,
             "scaling_for_recommended_speed"                     :  1.0,
+            # Next speed change scalings
+            "scaling_for_next_speed_limit"                      :  1.0,
+            "scaling_for_distance_to_next_speed_limit"          :  1.0,
+            "scaling_for_next_recommended_speed"                :  1.0,
+            "scaling_for_distance_to_next_recommended_speed"    :  1.0,
 
             "vx_sensor_bias"   : 0.0,
             "vx_sensor_stddev" : 0.0, #0.1
@@ -486,6 +494,10 @@ class AutonomousDrivingEnv(gym.Env):
             ["gps_line_coords_in_world_frame"       , -np.inf    , np.inf    , (1,) ],
             ["speed_limit"                          , -np.inf    , np.inf    , (1,) ],
             ["recommended_speed"                    , -np.inf    , np.inf    , (1,) ],
+            ["next_speed_limit"                     , -np.inf    , np.inf    , (1,) ],
+            ["distance_to_next_speed_limit"         , -np.inf    , np.inf    , (1,) ],
+            ["next_recommended_speed"               , -np.inf    , np.inf    , (1,) ],
+            ["distance_to_next_recommended_speed"   , -np.inf    , np.inf    , (1,) ],
         ]
 
 
@@ -503,8 +515,8 @@ class AutonomousDrivingEnv(gym.Env):
         for obs_details in observations_name_low_high_shape:
             # Extract the specs of this observation
             obs_name  = obs_details[0]
-            obs_low   = obs_details[1]
-            obs_high  = obs_details[2]
+            obs_low   = np.float32(obs_details[1])
+            obs_high  = np.float32(obs_details[2])
             obs_shape = obs_details[3]
             # Get the "should include" string for this name
             should_include_string = processed_observation_parameters.get("should_include_"+obs_name)
@@ -556,8 +568,8 @@ class AutonomousDrivingEnv(gym.Env):
         for obs_details in observations_name_low_high_shape_for_cone_detections:
             # Extract the specs of this observation
             obs_name  = obs_details[0]
-            obs_low   = obs_details[1]
-            obs_high  = obs_details[2]
+            obs_low   = np.float32(obs_details[1])
+            obs_high  = np.float32(obs_details[2])
             obs_shape = obs_details[3]
 
             # Process for should include in observation
@@ -785,6 +797,14 @@ class AutonomousDrivingEnv(gym.Env):
         speed_limit = road_info_dict.get("speed_limit_at_closest_p", 0.0) * self.scaling_for_speed_limit
         recommended_speed = road_info_dict.get("recommended_speed_at_closest_p", 0.0) * self.scaling_for_recommended_speed
 
+        # Next speed limit
+        next_speed_limit = road_info_dict["next_speed_limit"] * self.scaling_for_next_speed_limit
+        distance_to_next_speed_limit = road_info_dict["distance_to_next_speed_limit"] * self.scaling_for_distance_to_next_speed_limit
+
+        # Next recommended speed
+        next_recommended_speed = road_info_dict["next_recommended_speed"] * self.scaling_for_next_recommended_speed
+        distance_to_next_recommended_speed = road_info_dict["distance_to_next_recommended_speed"] * self.scaling_for_distance_to_next_recommended_speed
+
         look_ahead_road_curvatures_noise = np.array( np.random.normal(self.look_ahead_road_curvatures_bias, self.look_ahead_road_curvatures_stddev, (self.look_ahead_line_coords_in_body_frame_num_points,)) , dtype=np.float32)
         look_ahead_road_curvatures = (np.array(road_info_dict["curvatures"], dtype=np.float32) + look_ahead_road_curvatures_noise) * self.scaling_for_look_ahead_road_curvatures
 
@@ -912,15 +932,39 @@ class AutonomousDrivingEnv(gym.Env):
             obs_dict["road_curvature_at_closest_point"][0]  = road_curvature_at_closest_point
         if (self.should_include_info_for_road_curvature_at_closest_point):
             info_dict["road_curvature_at_closest_point"][0] = road_curvature_at_closest_point
-        # Add speeds (current progress)
+        
+        # Add speeds at current progress
         if (self.should_include_obs_for_speed_limit):
             obs_dict["speed_limit"][0] = speed_limit
         if (self.should_include_info_for_speed_limit):
             info_dict["speed_limit"][0] = speed_limit
+
         if (self.should_include_obs_for_recommended_speed):
             obs_dict["recommended_speed"][0] = recommended_speed
         if (self.should_include_info_for_recommended_speed):
             info_dict["recommended_speed"][0] = recommended_speed
+
+        # Add next speeds
+        if (self.should_include_obs_for_next_speed_limit):
+            obs_dict["next_speed_limit"][0] = next_speed_limit
+        if (self.should_include_info_for_next_speed_limit):
+            info_dict["next_speed_limit"][0] = next_speed_limit
+
+        if (self.should_include_obs_for_next_recommended_speed):
+            obs_dict["next_recommended_speed"][0] = next_recommended_speed
+        if (self.should_include_info_for_next_recommended_speed):
+            info_dict["next_recommended_speed"][0] = next_recommended_speed
+
+        # Add distance tp next speeds
+        if (self.should_include_obs_for_distance_to_next_speed_limit):
+            obs_dict["distance_to_next_speed_limit"][0] = distance_to_next_speed_limit
+        if (self.should_include_info_for_distance_to_next_speed_limit):
+            info_dict["distance_to_next_speed_limit"][0] = distance_to_next_speed_limit
+
+        if (self.should_include_obs_for_distance_to_next_recommended_speed):
+            obs_dict["distance_to_next_recommended_speed"][0] = distance_to_next_recommended_speed
+        if (self.should_include_info_for_next_recommended_speed):
+            info_dict["distance_to_next_recommended_speed"][0] = distance_to_next_recommended_speed
 
         if (self.should_include_obs_for_look_ahead_road_curvatures):
             obs_dict["look_ahead_road_curvatures"]  = look_ahead_road_curvatures
@@ -974,6 +1018,7 @@ class AutonomousDrivingEnv(gym.Env):
                     Euclidean distance from the car to the closest point on the road.
                 - "side_of_the_road_line" : int
                     The side of the road that the car is on (1:=left, -1=right).
+
                 - "progress_at_closest_p" : float
                     The total length of road from the start of the road to the closest point.
                 - "road_angle_at_closest_p" : float
@@ -982,8 +1027,22 @@ class AutonomousDrivingEnv(gym.Env):
                     Angle of the road, relative to the body frame, at the closest point.
                 - "curvature_at_closest_p" : float
                     The curvature of the road at the closest point.
+                - "speed_limit_at_closest_p" : float
+                    Speed limit at the closest point.
+                - "recommended_speed_at_closest_p" : float
+                    Recommended speed at the closest point.
                 - "closest_element_idx" : int
                     The index of the road element that is closest to the car.
+
+                - "next_speed_limit" : float
+                    The speed limit next time it changes
+                - "distance_to_next_speed_limit
+                    The road progress distance from the current point upto when the next speed limit starts
+                - "next_recommended_speed" : float
+                    The recommended next time it changes
+                - "distance_to_next_recommended_speed
+                    The road progress distance from the current point upto when the next recommended speed starts
+
                 - "progress_queries" : numpy array, 1-dimensional
                     A repeat of the input parameter that specifies the values of progress-along-the-road,
                     relative to the current position of the car, at which the observations should be generated. 
@@ -996,8 +1055,14 @@ class AutonomousDrivingEnv(gym.Env):
                 - "curvatures" : numpy array, 1-dimensional
                     Curvature of the road at each of the progress query points.
                     A 1-dimensional numpy array with: size = number of query points.
+                - "speed_limits" : numpy array, 1-dimensional
+                    Speed limits (v_max) at each of the progress query points.
+                    A 1-dimensional numpy array with: size = number of query points.
+                - "recommended_speeds" : numpy array, 1-dimensional
+                    Recommended speeds (v_rec) at each of the progress query points.
+                    A 1-dimensional numpy array with: size = number of query points.
 
-                Units: all length in meters, all angles in radians.
+                Units: all lengths in meters, all angles in radians, all speeds in meters/second.
         """
         return self.road.road_info_at_given_pose_and_progress_queries(px=self.car.px, py=self.car.py, theta=self.car.theta, progress_queries=progress_queries)
 
@@ -1509,9 +1574,6 @@ class AutonomousDrivingEnv(gym.Env):
 
         # Zoom into the start position
         self.render_matplotlib_zoom_to(px=px_traj[0],py=py_traj[0],x_width=zoom_width,y_height=zoom_height,axis_handle=axis_4_ani)
-
-        # Display that that animation creation is about to start
-        print("Now creating the animation, this may take some time.")
 
         # Function for printing each individual frame of the animation
         def animate_one_trajectory_frame(i):

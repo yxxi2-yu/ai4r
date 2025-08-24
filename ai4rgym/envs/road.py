@@ -79,13 +79,10 @@ class Road:
         self.__l = np.empty((0,),dtype=np.float32)
         self.__phi = np.empty((0,),dtype=np.float32)
         self.__isStraight = np.empty((0,),dtype=np.bool_)
-        # Maximum speed per element (base property, units: m/s). Defaults to NaN.
         self.__v_max = np.empty((0,),dtype=np.float32)
 
         # Initialize empty vectors for the derived properties of the road elements
         # > As private class variables
-        # Recommended speed per element (derived, units: m/s). Defaults to NaN until computed.
-        self.__v_rec = np.empty((0,),dtype=np.float32)
         self.__start_points = np.empty((0,2),dtype=np.float32)
         self.__end_points = np.empty((0,2),dtype=np.float32)
         self.__start_angles = np.empty((0,),dtype=np.float32)
@@ -96,6 +93,12 @@ class Road:
         self.__start_hyperplane_b = np.empty((0,),dtype=np.float32)
         self.__end_hyperplane_A = np.empty((0,2),dtype=np.float32)
         self.__end_hyperplane_b = np.empty((0,),dtype=np.float32)
+
+        self.__v_rec = np.empty((0,),dtype=np.float32)
+        self.__next_v_max = np.empty((0,),dtype=np.float32)
+        self.__l_total_at_next_v_max = np.empty((0,),dtype=np.float32)
+        self.__next_v_rec = np.empty((0,),dtype=np.float32)
+        self.__l_total_at_next_v_rec = np.empty((0,),dtype=np.float32)
 
         self.__cones_left_side  = np.empty((0,2),dtype=np.float32)
         self.__cones_right_side = np.empty((0,2),dtype=np.float32)
@@ -132,8 +135,13 @@ class Road:
     def get_start_hyperplane_b(self): return np.copy(self.__start_hyperplane_b)
     def get_end_hyperplane_A(self): return np.copy(self.__end_hyperplane_A)
     def get_end_hyperplane_b(self): return np.copy(self.__end_hyperplane_b)
+
     def get_v_max(self): return np.copy(self.__v_max)
     def get_v_recommended(self): return np.copy(self.__v_rec)
+    def get_next_v_max(self): return np.copy(self.__next_v_max)
+    def get_l_total_at_next_v_max(self): return np.copy(self.__l_total_at_next_v_max)
+    def get_next_v_recommended(self): return np.copy(self.__next_v_rec)
+    def get_l_total_at_next_v_recommended(self): return np.copy(self.__l_total_at_next_v_rec)
 
     def get_cones_left_side(self):  return np.copy(self.__cones_left_side)
     def get_cones_right_side(self): return np.copy(self.__cones_right_side)
@@ -363,6 +371,27 @@ class Road:
             self.__v_rec[for_index:for_index+1] = np.array([
                 Road.compute_recommended_speed(c_i, v_max_i)
             ], dtype=np.float32)
+
+        # Update the road progression at speed changes (for v_max and v_rec)
+        this_v_max = np.copy(self.__v_max[for_index:(for_index+1)])
+        this_v_rec = np.copy(self.__v_rec[for_index:(for_index+1)])
+        if (for_index == 0):
+            self.__next_v_max            = np.concatenate((self.__next_v_max            , this_v_max                     ), axis=0, dtype=np.float32)
+            self.__l_total_at_next_v_max = np.concatenate((self.__l_total_at_next_v_max , np.array([0.],dtype=np.float32)), axis=0, dtype=np.float32)
+            self.__next_v_rec            = np.concatenate((self.__next_v_rec            , this_v_rec                     ), axis=0, dtype=np.float32)
+            self.__l_total_at_next_v_rec = np.concatenate((self.__l_total_at_next_v_rec , np.array([0.],dtype=np.float32)), axis=0, dtype=np.float32)
+        else:
+            current_v_max = np.copy(self.__next_v_max[-1])
+            if (np.abs(current_v_max-this_v_max) > 1e-8):
+                self.__next_v_max            = np.concatenate((self.__next_v_max            , this_v_max) , axis=0, dtype=np.float32)
+                self.__l_total_at_next_v_max = np.concatenate((self.__l_total_at_next_v_max , this_l_total_at_end - self.__l[for_index:(for_index+1)]) , axis=0, dtype=np.float32)
+
+            current_v_rec = np.copy(self.__next_v_rec[-1])
+            if (np.abs(current_v_rec-this_v_rec) > 1e-8):
+                self.__next_v_rec            = np.concatenate((self.__next_v_rec            , this_v_rec) , axis=0, dtype=np.float32)
+                self.__l_total_at_next_v_rec = np.concatenate((self.__l_total_at_next_v_rec , this_l_total_at_end - self.__l[for_index:(for_index+1)]) , axis=0, dtype=np.float32)
+
+            
 
     @staticmethod
     def compute_recommended_speed(curvature, max_speed):
@@ -1039,6 +1068,7 @@ class Road:
                     Euclidean distance from the car to the closest point on the road.
                 - "side_of_the_road_line" : int
                     The side of the road that the car is on (1:=left, -1=right).
+
                 - "progress_at_closest_p" : float
                     The total length of road from the start of the road to the closest point.
                 - "road_angle_at_closest_p" : float
@@ -1047,8 +1077,22 @@ class Road:
                     Angle of the road, relative to the body frame, at the closest point.
                 - "curvature_at_closest_p" : float
                     The curvature of the road at the closest point.
+                - "speed_limit_at_closest_p" : float
+                    Speed limit (v_max) at the closest point.
+                - "recommended_speed_at_closest_p" : float
+                    Recommended speed (v_rec) at the closest point.
                 - "closest_element_idx" : int
                     The index of the road element that is closest to the car.
+
+                - "next_speed_limit" : float
+                    The speed limit next time it changes
+                - "distance_to_next_speed_limit
+                    The road progress distance from the current point upto when the next speed limit starts
+                - "next_recommended_speed" : float
+                    The recommended next time it changes
+                - "distance_to_next_recommended_speed
+                    The road progress distance from the current point upto when the next recommended speed starts
+
                 - "progress_queries" : numpy array, 1-dimensional
                     A repeat of the input parameter that specifies the values of progress-along-the-road,
                     relative to the current position of the car, at which the observations should be generated. 
@@ -1062,26 +1106,50 @@ class Road:
                     Curvature of the road at each of the progress query points.
                     A 1-dimensional numpy array with: size = number of query points.
                 - "speed_limits" : numpy array, 1-dimensional
-                    Speed limits (v_max) at each of the progress query points (units: m/s).
+                    Speed limits (v_max) at each of the progress query points.
                     A 1-dimensional numpy array with: size = number of query points.
                 - "recommended_speeds" : numpy array, 1-dimensional
-                    Recommended speeds (v_rec) at each of the progress query points (units: m/s).
+                    Recommended speeds (v_rec) at each of the progress query points.
                     A 1-dimensional numpy array with: size = number of query points.
-                - "speed_limit_at_closest_p" : float
-                    Speed limit (v_max) at the closest point (units: m/s).
-                - "recommended_speed_at_closest_p" : float
-                    Recommended speed (v_rec) at the closest point (units: m/s).
 
-                Units: all lengths in meters, all angles in radians, all speeds in m/s.
+                Units: all lengths in meters, all angles in radians, all speeds in meters/second.
         """
         # Compute the closest point on the road
         px_closest, py_closest, closest_distance, side_of_the_road_line, progress_at_closest_p, road_angle_at_closest_p, closest_element_idx = self.find_closest_point_to(px=px, py=py)
 
         # Compute the relative road angle at the closest point
         road_angle_relative_to_body_frame_at_closest_p = road_angle_at_closest_p - theta
+        # Unwrap to be in the range [pi,pi]
+        if (road_angle_relative_to_body_frame_at_closest_p < -np.pi):
+            road_angle_relative_to_body_frame_at_closest_p += 2.0*np.pi
+        if (road_angle_relative_to_body_frame_at_closest_p >  np.pi):
+            road_angle_relative_to_body_frame_at_closest_p -= 2.0*np.pi
 
         # Get the curvature of the closest element
         curvature_at_closest_p = self.__c[closest_element_idx]
+
+        # Get the speed limit and recommended speed of the closest element
+        speed_limit_at_closest_p = self.__v_max[closest_element_idx] if self.__v_max.shape[0] > 0 else np.float32(np.nan)
+        recommended_speed_at_closest_p = self.__v_rec[closest_element_idx] if self.__v_rec.shape[0] > 0 else np.float32(np.nan)
+
+        # Get the next speed limit and next recommended speed
+        if (progress_at_closest_p < self.__l_total_at_next_v_max[-1]):
+            next_v_max_idx = np.searchsorted(self.__l_total_at_next_v_max, progress_at_closest_p, side='right')
+            next_speed_limit = self.__next_v_max[next_v_max_idx]
+            distance_to_next_speed_limit = self.__l_total_at_next_v_max[next_v_max_idx] - progress_at_closest_p
+        else:
+            next_speed_limit = self.__next_v_max[-1]
+            distance_to_next_speed_limit = 1000.0
+
+        if (progress_at_closest_p < self.__l_total_at_next_v_rec[-1]):
+            next_v_rec_idx = np.searchsorted(self.__l_total_at_next_v_rec, progress_at_closest_p, side='right')
+            next_recommended_speed = self.__next_v_rec[next_v_rec_idx]
+            distance_to_next_recommended_speed = self.__l_total_at_next_v_rec[next_v_rec_idx] - progress_at_closest_p
+        else:
+            next_recommended_speed = self.__next_v_rec[-1]
+            distance_to_next_recommended_speed = 1000.0
+
+
 
         # Shift the progression queries by the progression of the current point
         prog_queries_from_start = progress_at_closest_p + progress_queries
@@ -1101,6 +1169,7 @@ class Road:
 
         # Get the curvature at the progression queries
         p_curvatures = self.convert_progression_to_curvature(prog_queries_from_start)
+
         # Get speed limits and recommended speeds at the progression queries
         p_speed_limits, p_recommended_speeds = self.convert_progression_to_speed_limits(prog_queries_from_start)
 
@@ -1114,19 +1183,27 @@ class Road:
             "py_closest_in_body_frame" : p_closest_in_body_frame[0,1],
             "closest_distance" : closest_distance,
             "side_of_the_road_line" : side_of_the_road_line,
+
             "progress_at_closest_p" : progress_at_closest_p,
             "road_angle_at_closest_p" : road_angle_at_closest_p,
             "road_angle_relative_to_body_frame_at_closest_p" : road_angle_relative_to_body_frame_at_closest_p,
             "curvature_at_closest_p" : curvature_at_closest_p,
+            "speed_limit_at_closest_p" : speed_limit_at_closest_p,
+            "recommended_speed_at_closest_p" : recommended_speed_at_closest_p,
+
             "closest_element_idx" : closest_element_idx,
+
+            "next_speed_limit" : next_speed_limit,
+            "distance_to_next_speed_limit" : distance_to_next_speed_limit,
+            "next_recommended_speed" : next_recommended_speed,
+            "distance_to_next_recommended_speed" : distance_to_next_recommended_speed,
+
             "progress_queries" : progress_queries,
             "road_points_in_body_frame" : p_coords_in_body_frame,
             "road_angles_relative_to_body_frame" : p_angles_relative_to_body_frame,
             "curvatures" : p_curvatures,
             "speed_limits" : p_speed_limits,
             "recommended_speeds" : p_recommended_speeds,
-            "speed_limit_at_closest_p" : self.__v_max[closest_element_idx] if self.__v_max.shape[0] > 0 else np.float32(np.nan),
-            "recommended_speed_at_closest_p" : self.__v_rec[closest_element_idx] if self.__v_rec.shape[0] > 0 else np.float32(np.nan),
         }
 
         # Return the info dictionary
