@@ -272,36 +272,63 @@ class AutonomousDrivingEnv(gym.Env):
                     Gains for default cruise controller. Defaults 20.0, 5.0, 0.0.
                 - cruise_integral_limit : float
                     Anti-windup clamp for the integral term (abs value). Default 50.0.
+                - action_interface : str [OPTIONAL]
+                    Controls the shape of the action space. One of
+                    {"full", "drive_only", "steer_only", "none", "auto"}.
+                    "full" (default) exposes both [drive, steer].
+                    "drive_only" exposes [drive] only (steer is zeroed or controlled internally).
+                    "steer_only" exposes [steer] only (drive is zeroed or controlled internally).
+                    "none" exposes a constant no-op (both axes internally controlled).
+                    "auto" derives from toggles: LK only→drive_only; CC only→steer_only; both→none; neither→full.
 
         Returns
         -------
         Nothing
         """
 
-        # ACTION SPACE
+        # ACTION SPACE (configurable via internal_policy_config['action_interface'])
+        # Determine action interface early (may depend on enable flags)
+        _ipc = internal_policy_config or {}
+        _enable_lk = bool(_ipc.get("enable_lane_keep", False))
+        _enable_cc = bool(_ipc.get("enable_cruise_control", False))
+        _requested_ai = _ipc.get("action_interface", "full")
+        if _requested_ai == "auto":
+            if _enable_lk and not _enable_cc:
+                self._action_interface = "drive_only"
+            elif _enable_cc and not _enable_lk:
+                self._action_interface = "steer_only"
+            elif _enable_lk and _enable_cc:
+                self._action_interface = "none"
+            else:
+                self._action_interface = "full"
+        else:
+            self._action_interface = _requested_ai
+
         # > Actions are the:
-        #   - Drive command (aka., force command) to the motor.
-        #     Range [-100,100]
-        #     Units: percent
-        #   - Requested steering angle.
-        #     Range between plus/minus car_parameters["delta_request_max"]
-        #     Units: radians
-        action_space_low  = np.array([-100.0, -bicycle_model_parameters["delta_request_max"]], dtype=np.float32)
-        action_space_high = np.array([ 100.0,  bicycle_model_parameters["delta_request_max"]], dtype=np.float32)
+        #   - Drive command (aka., force command) to the motor. Range [-100,100] (percent)
+        #   - Requested steering angle. Range +/- delta_request_max (radians)
+        _delta_max = float(bicycle_model_parameters["delta_request_max"])
+        if self._action_interface == "full":
+            action_space_low  = np.array([-100.0, -_delta_max], dtype=np.float32)
+            action_space_high = np.array([ 100.0,  _delta_max], dtype=np.float32)
+            self.action_space_labels = ["Drive command","Requested steering angle"]
+        elif self._action_interface == "drive_only":
+            action_space_low  = np.array([-100.0], dtype=np.float32)
+            action_space_high = np.array([ 100.0], dtype=np.float32)
+            self.action_space_labels = ["Drive command"]
+        elif self._action_interface == "steer_only":
+            action_space_low  = np.array([-_delta_max], dtype=np.float32)
+            action_space_high = np.array([ _delta_max], dtype=np.float32)
+            self.action_space_labels = ["Requested steering angle"]
+        elif self._action_interface == "none":
+            # Constant no-op input; value is ignored. Avoid RescaleAction with this mode.
+            action_space_low  = np.array([0.0], dtype=np.float32)
+            action_space_high = np.array([0.0], dtype=np.float32)
+            self.action_space_labels = []
+        else:
+            raise ValueError(f"Unknown action_interface '{self._action_interface}'")
+
         self.action_space = spaces.Box(low=action_space_low, high=action_space_high, dtype=np.float32)
-
-        # > For readability, would we use a dictionary,...
-        #   HOWEVER, action space dictionaries are not compatible with
-        #   the Stable Baselines 3 RL training library.
-        #self.action_space = spaces.Dict(
-        #    {
-        #        "drive_command": spaces.Box(low=-100.0, high=100.0, shape=(1,), dtype=np.float32),
-        #        "delta_request": spaces.Box(low=-bicycle_model_parameters["delta_request_max"], high=bicycle_model_parameters["delta_request_max"], shape=(1,), dtype=np.float32),
-        #   }
-        #)
-
-        # To still provide some readability for the action space box:
-        self.action_space_labels = ["Drive command","Requested steering angle"]
 
         # THE CAR:
         # Create an instance of the bicycle model
@@ -1263,8 +1290,23 @@ class AutonomousDrivingEnv(gym.Env):
         """
 
         # Optionally override parts of the incoming action using internal policies
-        drive_cmd = float(action[0])
-        delta_req = float(action[1])
+        # Expand the provided action according to the configured interface
+        _a = np.array(action, dtype=np.float32).ravel()
+        _mode = getattr(self, "_action_interface", "full")
+        if _mode == "full":
+            drive_cmd = float(_a[0])
+            delta_req = float(_a[1])
+        elif _mode == "drive_only":
+            drive_cmd = float(_a[0])
+            delta_req = 0.0
+        elif _mode == "steer_only":
+            drive_cmd = 0.0
+            delta_req = float(_a[0])
+        elif _mode == "none":
+            drive_cmd = 0.0
+            delta_req = 0.0
+        else:
+            raise RuntimeError(f"Unsupported action_interface '{_mode}'")
 
         # If any custom controller is enabled, generate an observation at the
         # current state for the controller to use (agent-view, not GT).
@@ -1289,6 +1331,7 @@ class AutonomousDrivingEnv(gym.Env):
             except Exception as e:
                 # Fail safe: keep requested action if controller errors
                 # print or log could be added here if desired
+                print("Error in lane-keep controller:", e)
                 pass
 
         # Cruise control controller (longitudinal drive command)
@@ -1301,6 +1344,7 @@ class AutonomousDrivingEnv(gym.Env):
                     drive_cmd = float(self._default_cruise_drive_command())
             except Exception as e:
                 # Fail safe: keep requested action if controller errors
+                print("Error in cruise control controller:", e)
                 pass
 
         # Set the action request for bicycle model
@@ -1470,6 +1514,10 @@ class AutonomousDrivingEnv(gym.Env):
 
     def set_cruise_control_fn(self, fn):
         self.cruise_controller_fn = fn
+
+    def get_action_interface(self):
+        """Return the current action interface mode (string)."""
+        return getattr(self, "_action_interface", "full")
 
 
     def render_matplotlib_init_figure(self):
