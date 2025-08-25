@@ -4,13 +4,19 @@ from tqdm import tqdm
 import numpy as np
 import gymnasium as gym
 
-def evaluate_policy(env, model, keys = ['px', 'py', 'theta', 'delta'], max_steps = 5000, return_rewards = False):
+def evaluate_policy(env, model, keys = ['px', 'py', 'theta', 'delta'], max_steps = 5000, return_rewards = False, return_extras: bool = False):
     # Reset the environment and get initial observation
     observation, info = env.reset()
     
     # Initialize trajectories with the initial conditions using list comprehension
     trajectories = {key: [info[f'ground_truth_{key}'][0]] for key in keys}
     rewards = []
+    # Optional extras we may want to track (kept separate to avoid breaking callers)
+    extras = {}
+    if return_extras:
+        # Seed extras with initial recommended speed from ground truth (m/s)
+        gt0 = env.unwrapped.get_current_ground_truth()
+        extras["recommended_speed"] = [ float(gt0['recommended_speed_at_closest_point']) ]
 
     # Iterate over simulation steps
     for _ in range(max_steps):
@@ -20,6 +26,9 @@ def evaluate_policy(env, model, keys = ['px', 'py', 'theta', 'delta'], max_steps
         # Update trajectory lists using list comprehension
         [trajectories[key].append(info[f'ground_truth_{key}'][0]) for key in keys]
         rewards.append(reward)
+        if return_extras:
+            gt = env.unwrapped.get_current_ground_truth()
+            extras["recommended_speed"].append(float(gt['recommended_speed_at_closest_point']))
 
         if terminated:
             break
@@ -27,11 +36,19 @@ def evaluate_policy(env, model, keys = ['px', 'py', 'theta', 'delta'], max_steps
     # Convert lists to NumPy arrays before returning using list comprehension
     trajectories = {key: np.array(trajectories[key], dtype=np.float32) for key in keys}
 
-    # Return
+    # Convert extras lists to numpy arrays (if any)
+    if return_extras:
+        for k, v in list(extras.items()):
+            extras[k] = np.array(v, dtype=np.float32)
+
+    # Return (preserve old behavior unless extras explicitly requested)
+    if return_rewards and return_extras:
+        return trajectories, rewards, extras
     if return_rewards:
         return trajectories, rewards
-    else:
-        return trajectories
+    if return_extras:
+        return trajectories, extras
+    return trajectories
 
 def plot_trajectory(env, px, py):
     fig, axs = plt.subplots()
@@ -64,13 +81,33 @@ def plot_and_animate_trajectory(env, trajectory, Ts, path_for_saving_figures):
     print(f'Saved animation at {path_for_saving_figures}/trajectory_animation.gif')
     return ani
 
-def eval_model(env, model, figs_dir, timestep, max_steps = 5000):
+def eval_model(env, model, figs_dir, timestep, max_steps = 5000, plot_velocity: bool = False, speed_units: str = "kmh"):
     #px_traj, py_raj, rewards = simulate_episode(env, model, max_steps)
-    trajectory, rewards = evaluate_policy(env, model, keys = ['px', 'py'], max_steps = max_steps, return_rewards = True)
+    # If plotting velocity, also fetch vx and recommended speed via extras
+    if plot_velocity:
+        trajectory, rewards, extras = evaluate_policy(
+            env,
+            model,
+            keys=['px', 'py', 'vx'],
+            max_steps=max_steps,
+            return_rewards=True,
+            return_extras=True,
+        )
+    else:
+        trajectory, rewards = evaluate_policy(env, model, keys = ['px', 'py'], max_steps = max_steps, return_rewards = True)
     fig_trajectory = plot_trajectory(env, trajectory['px'], trajectory['py'])
     fig_rewards = plot_rewards(rewards)
     fig_trajectory.savefig(f"{figs_dir}/{timestep}_traj.png")
     fig_rewards.savefig(f"{figs_dir}/{timestep}_rwd.png")
+    # Optional speed comparison plot
+    if plot_velocity:
+        vx_series = trajectory.get('vx', None)
+        rec_series = extras.get('recommended_speed', None)
+        if vx_series is not None and rec_series is not None and len(vx_series) == len(rec_series):
+            fig_speed = plot_speed_vs_recommended(vx_series, rec_series, units=speed_units)
+            fig_speed.savefig(f"{figs_dir}/{timestep}_spd.png")
+        else:
+            print("[WARN] Could not plot speeds: mismatch or missing data.")
 
 def eval_episode(env, model, max_steps = 5000):
     print("Evaluating 1 episode for a maximum of {} steps".format(max_steps))
@@ -100,6 +137,36 @@ def plot_rewards(rewards):
     axs.grid(visible=True, which="both", axis="both", linestyle='--')
     # Add an overall figure title
     fig.suptitle("Rewards per time step", fontsize=12)
+    return fig
+
+def plot_speed_vs_recommended(vx_series_mps: np.ndarray, rec_series_mps: np.ndarray, units: str = "kmh"):
+    """
+    Plot current speed (car.vx) vs recommended speed along the episode.
+
+    Parameters
+    - vx_series_mps: np.ndarray of car longitudinal speed in m/s
+    - rec_series_mps: np.ndarray of recommended speed in m/s
+    - units: "kmh" or "mps" for y-axis units
+    """
+    # Convert units if requested
+    if units.lower() in ["kmh", "km/h", "kph"]:
+        scale = 3.6
+        ylabel = "Speed [km/h]"
+    else:
+        scale = 1.0
+        ylabel = "Speed [m/s]"
+
+    vx_plot = np.asarray(vx_series_mps, dtype=np.float32) * scale
+    rec_plot = np.asarray(rec_series_mps, dtype=np.float32) * scale
+
+    fig, ax = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
+    ax.plot(vx_plot, color='tab:blue', linewidth=2, label='Car speed')
+    ax.plot(rec_plot, color='tab:orange', linewidth=2, linestyle='--', label='Recommended speed')
+    ax.set_xlabel('Time step', fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=10)
+    ax.grid(visible=True, which="both", axis="both", linestyle='--')
+    ax.legend()
+    fig.suptitle("Speed vs Recommended", fontsize=12)
     return fig
 
 def ensure_dirs(paths):
