@@ -291,7 +291,7 @@ class AutonomousDrivingEnv(gym.Env):
         _ipc = internal_policy_config or {}
         _enable_lk = bool(_ipc.get("enable_lane_keep", False))
         _enable_cc = bool(_ipc.get("enable_cruise_control", False))
-        _requested_ai = _ipc.get("action_interface", "full")
+        _requested_ai = _ipc.get("action_interface", "auto")
         if _requested_ai == "auto":
             if _enable_lk and not _enable_cc:
                 self._action_interface = "drive_only"

@@ -225,8 +225,7 @@ total_reward = sum(rewards)
 avg_reward = total_reward/len(rewards)
 
 print(f"Evaluation Complete. Total Reward for Episode: {total_reward:.0f}, Avg Reward/Step: {avg_reward:.2f}")
-fig = plot_rewards(rewards)
-fig.savefig(f"{path_for_saving_figures}/test_rewards.png")
+plot_and_save_rewards(rewards, path_for_saving_figures, timestep=model_idx)
 
 print("Plotting and animating trajectory .. ")
 ani = plot_and_animate_trajectory(

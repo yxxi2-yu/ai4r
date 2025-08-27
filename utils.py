@@ -5,35 +5,83 @@ import numpy as np
 import gymnasium as gym
 
 def evaluate_policy(env, model, keys = ['px', 'py', 'theta', 'delta'], max_steps = 5000, return_rewards = False, return_extras: bool = False):
+    # Helper: robustly fetch a scalar for a given key; raise if missing
+    def _extract_value(key: str, obs: dict, info: dict, step_idx: int):
+        # 1) Try ground truth channels for canonical state keys
+        gt_key = f"ground_truth_{key}"
+        if gt_key in info:
+            val = info[gt_key]
+            try:
+                return float(val[0])
+            except Exception:
+                return float(val)
+        if gt_key in obs:
+            val = obs[gt_key]
+            try:
+                return float(val[0])
+            except Exception:
+                return float(val)
+
+        # 2) Try direct key in info/obs (for non-GT items like distance_to_closest_point)
+        if key in info:
+            val = info[key]
+            try:
+                return float(val[0])
+            except Exception:
+                return float(val)
+        if key in obs:
+            val = obs[key]
+            try:
+                return float(val[0])
+            except Exception:
+                return float(val)
+
+        # 3) Fallback: environment's ground truth dictionary
+        gt = env.unwrapped.get_current_ground_truth()
+        if key in gt:
+            return float(gt[key])
+
+        # 4) If not found, raise with a helpful message
+        info_keys = list(info.keys())
+        obs_keys = list(obs.keys())
+        gt_keys = list(gt.keys()) if isinstance(gt, dict) else []
+        raise KeyError(
+            f"Key '{key}' not found at step {step_idx}. Looked for 'ground_truth_{key}' in info/obs, then '{key}' in info/obs, then env.unwrapped.get_current_ground_truth().\n"
+            f"Available info keys: {info_keys}\nAvailable obs keys: {obs_keys}\nAvailable ground truth keys: {gt_keys}"
+        )
+
     # Reset the environment and get initial observation
     observation, info = env.reset()
-    
-    # Initialize trajectories with the initial conditions using list comprehension
-    trajectories = {key: [info[f'ground_truth_{key}'][0]] for key in keys}
+
+    # Initialize trajectories with the initial conditions
+    trajectories = {key: [_extract_value(key, observation, info, step_idx=0)] for key in keys}
     rewards = []
+
     # Optional extras we may want to track (kept separate to avoid breaking callers)
     extras = {}
     if return_extras:
         # Seed extras with initial recommended speed from ground truth (m/s)
         gt0 = env.unwrapped.get_current_ground_truth()
-        extras["recommended_speed"] = [ float(gt0['recommended_speed_at_closest_point']) ]
+        extras["recommended_speed"] = [float(gt0.get('recommended_speed_at_closest_point', 0.0))]
 
     # Iterate over simulation steps
-    for _ in range(max_steps):
+    for t in range(max_steps):
         action, _ = model.predict(observation, deterministic=True)
         observation, reward, terminated, truncated, info = env.step(action)
 
-        # Update trajectory lists using list comprehension
-        [trajectories[key].append(info[f'ground_truth_{key}'][0]) for key in keys]
+        # Update trajectory lists for each requested key
+        for key in keys:
+            trajectories[key].append(_extract_value(key, observation, info, step_idx=t+1))
+
         rewards.append(reward)
         if return_extras:
             gt = env.unwrapped.get_current_ground_truth()
-            extras["recommended_speed"].append(float(gt['recommended_speed_at_closest_point']))
+            extras.setdefault("recommended_speed", []).append(float(gt.get('recommended_speed_at_closest_point', 0.0)))
 
         if terminated:
             break
-    
-    # Convert lists to NumPy arrays before returning using list comprehension
+
+    # Convert lists to NumPy arrays before returning
     trajectories = {key: np.array(trajectories[key], dtype=np.float32) for key in keys}
 
     # Convert extras lists to numpy arrays (if any)
@@ -50,30 +98,42 @@ def evaluate_policy(env, model, keys = ['px', 'py', 'theta', 'delta'], max_steps
         return trajectories, extras
     return trajectories
 
-def plot_trajectory(env, px, py):
+def plot_and_save_trajectory(env, px, py, figs_dir: str, timestep):
     fig, axs = plt.subplots()
     env.unwrapped.road.render_road(axs)
-    line, = axs.plot(px, py, color="#FF0000", label="Trajectory")  # Bright red color
+    axs.plot(px, py, color="#FF0000", label="Trajectory")
     # Add an invisible line for the road legend
-    line_road, = axs.plot([], [], color="black", label="Road")
+    axs.plot([], [], color="black", label="Road")
+    axs.set_xlabel('px [meters]')
+    axs.set_ylabel('py [meters]')
+    axs.grid(True)
+    axs.set_aspect('equal', adjustable='box')
+    fig.legend()
+    fig.suptitle(f"Road and Trajectory ({timestep})")
+    outfile = f"{figs_dir}/{timestep}_traj.png"
+    fig.savefig(outfile)
+    plt.close(fig)
+    return outfile
+
+def plot_and_animate_trajectory(env, trajectory, Ts, path_for_saving_figures):
+    px_traj, py_traj, theta_traj, delta_traj = \
+        trajectory['px'], trajectory['py'], trajectory['theta'], trajectory['delta']
+
+    # Create a figure and plot road + trajectory
+    fig, axs = plt.subplots()
+    env.unwrapped.road.render_road(axs)
+    axs.plot(px_traj, py_traj, color="#FF0000", label="Trajectory")
+    axs.plot([], [], color="black", label="Road")
     axs.set_xlabel('px [meters]')
     axs.set_ylabel('py [meters]')
     axs.grid(True)
     axs.set_aspect('equal', adjustable='box')
     fig.legend()
     fig.suptitle("Road and Trajectory")
-    #plt.show()
-    return fig
-
-def plot_and_animate_trajectory(env, trajectory, Ts, path_for_saving_figures):
-    px_traj, py_traj, theta_traj, delta_traj = \
-        trajectory['px'], trajectory['py'], trajectory['theta'], trajectory['delta']
-
-    fig = plot_trajectory(env, px_traj, py_traj)
-
-    # Saving the plot
-    fig.savefig(f"{path_for_saving_figures}/trajectory_plot.pdf")
-    print(f'Saved plot at {path_for_saving_figures}/trajectory_plot.pdf')
+    pdf_path = f"{path_for_saving_figures}/trajectory_plot.pdf"
+    fig.savefig(pdf_path)
+    plt.close(fig)
+    print(f'Saved plot at {pdf_path}')
 
     # Creating and saving an animation
     ani = env.unwrapped.render_matplotlib_animation_of_trajectory(px_traj, py_traj, theta_traj, delta_traj, Ts, traj_increment=3)
@@ -81,33 +141,83 @@ def plot_and_animate_trajectory(env, trajectory, Ts, path_for_saving_figures):
     print(f'Saved animation at {path_for_saving_figures}/trajectory_animation.gif')
     return ani
 
-def eval_model(env, model, figs_dir, timestep, max_steps = 5000, plot_velocity: bool = False, speed_units: str = "kmh"):
-    #px_traj, py_raj, rewards = simulate_episode(env, model, max_steps)
-    # If plotting velocity, also fetch vx and recommended speed via extras
-    if plot_velocity:
+def eval_model(
+    env,
+    model,
+    figs_dir,
+    timestep,
+    max_steps = 5000,
+    plot_rewards = True,
+    plot_trajectory = False,
+    plot_distance_to_line: bool = False,
+    plot_velocity: bool = False,  
+    plot_speed_error: bool = False,
+    speed_units: str = "kmh",
+):
+    # Build keys to request from evaluate_policy in a DRY way
+    keys = ['px', 'py']
+    if plot_velocity or plot_speed_error:
+        keys.append('vx')
+    if plot_distance_to_line:
+        # Pull distance to line from ground truth
+        keys.append('distance_to_closest_point')
+
+    # Need extras whenever we need recommended speed (velocity or speed error plots)
+    return_extras = bool(plot_velocity or plot_speed_error)
+
+    # Call evaluate_policy once with the composed keys
+    if return_extras:
         trajectory, rewards, extras = evaluate_policy(
             env,
             model,
-            keys=['px', 'py', 'vx'],
+            keys=keys,
             max_steps=max_steps,
             return_rewards=True,
             return_extras=True,
         )
     else:
-        trajectory, rewards = evaluate_policy(env, model, keys = ['px', 'py'], max_steps = max_steps, return_rewards = True)
-    fig_trajectory = plot_trajectory(env, trajectory['px'], trajectory['py'])
-    fig_rewards = plot_rewards(rewards)
-    fig_trajectory.savefig(f"{figs_dir}/{timestep}_traj.png")
-    fig_rewards.savefig(f"{figs_dir}/{timestep}_rwd.png")
+        trajectory, rewards = evaluate_policy(
+            env,
+            model,
+            keys=keys,
+            max_steps=max_steps,
+            return_rewards=True,
+            return_extras=False,
+        )
+
+    # Reward plot
+    if plot_rewards:
+        plot_and_save_rewards(rewards, figs_dir, timestep)
+
+    # Trajectory plot
+    if plot_trajectory:
+        plot_and_save_trajectory(env, trajectory['px'], trajectory['py'], figs_dir, timestep)
+
     # Optional speed comparison plot
     if plot_velocity:
         vx_series = trajectory.get('vx', None)
         rec_series = extras.get('recommended_speed', None)
         if vx_series is not None and rec_series is not None and len(vx_series) == len(rec_series):
-            fig_speed = plot_speed_vs_recommended(vx_series, rec_series, units=speed_units)
-            fig_speed.savefig(f"{figs_dir}/{timestep}_spd.png")
+            plot_and_save_speed_vs_recommended(vx_series, rec_series, figs_dir, timestep, units=speed_units)
         else:
             print("[WARN] Could not plot speeds: mismatch or missing data.")
+
+    # Optional speed error plot: (car.vx - recommended_speed)
+    if plot_speed_error:
+        vx_series = trajectory.get('vx', None)
+        rec_series = extras.get('recommended_speed', None)
+        if vx_series is not None and rec_series is not None and len(vx_series) == len(rec_series):
+            plot_and_save_speed_error(vx_series, rec_series, figs_dir, timestep, units=speed_units)
+        else:
+            print("[WARN] Could not plot speed error: mismatch or missing data.")
+
+    # Optional distance-to-line plot
+    if plot_distance_to_line:
+        dist_series = trajectory.get('distance_to_closest_point', None)
+        if dist_series is not None:
+            plot_and_save_distance_to_line(dist_series, figs_dir, timestep)
+        else:
+            print("[WARN] Could not plot distance: series not available.")
 
 def eval_episode(env, model, max_steps = 5000):
     print("Evaluating 1 episode for a maximum of {} steps".format(max_steps))
@@ -126,28 +236,46 @@ def eval_episode(env, model, max_steps = 5000):
     return step, avg_rewards
 
 def plot_rewards(rewards):
+    """Return a matplotlib Figure that plots rewards per timestep.
+    This maintains backward compatibility for notebooks importing plot_rewards.
+    """
     fig, axs = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
-
-    # Plot the rewards
     axs.plot(rewards, color='black', linewidth=2)
-    # Set the labels:
     axs.set_xlabel('Time step', fontsize=10)
     axs.set_ylabel('Reward', fontsize=10)
-    # Add grid lines
     axs.grid(visible=True, which="both", axis="both", linestyle='--')
-    # Add an overall figure title
     fig.suptitle("Rewards per time step", fontsize=12)
     return fig
 
-def plot_speed_vs_recommended(vx_series_mps: np.ndarray, rec_series_mps: np.ndarray, units: str = "kmh"):
+def plot_trajectory(env, px, py):
+    """Return a matplotlib Figure that plots the road and a trajectory.
+    Backward-compatible shim for notebooks that import plot_trajectory.
     """
-    Plot current speed (car.vx) vs recommended speed along the episode.
+    fig, axs = plt.subplots()
+    env.unwrapped.road.render_road(axs)
+    axs.plot(px, py, color="#FF0000", label="Trajectory")
+    axs.plot([], [], color="black", label="Road")  # legend handle
+    axs.set_xlabel('px [meters]')
+    axs.set_ylabel('py [meters]')
+    axs.grid(True)
+    axs.set_aspect('equal', adjustable='box')
+    fig.legend()
+    fig.suptitle("Road and Trajectory")
+    return fig
 
-    Parameters
-    - vx_series_mps: np.ndarray of car longitudinal speed in m/s
-    - rec_series_mps: np.ndarray of recommended speed in m/s
-    - units: "kmh" or "mps" for y-axis units
-    """
+def plot_and_save_rewards(rewards, figs_dir: str, timestep):
+    fig, axs = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
+    axs.plot(rewards, color='black', linewidth=2)
+    axs.set_xlabel('Time step', fontsize=10)
+    axs.set_ylabel('Reward', fontsize=10)
+    axs.grid(visible=True, which="both", axis="both", linestyle='--')
+    fig.suptitle(f"Rewards per time step ({timestep})", fontsize=12)
+    outfile = f"{figs_dir}/{timestep}_rwd.png"
+    fig.savefig(outfile)
+    plt.close(fig)
+    return outfile
+
+def plot_and_save_speed_vs_recommended(vx_series_mps: np.ndarray, rec_series_mps: np.ndarray, figs_dir: str, timestep, units: str = "kmh"):
     # Convert units if requested
     if units.lower() in ["kmh", "km/h", "kph"]:
         scale = 3.6
@@ -166,8 +294,57 @@ def plot_speed_vs_recommended(vx_series_mps: np.ndarray, rec_series_mps: np.ndar
     ax.set_ylabel(ylabel, fontsize=10)
     ax.grid(visible=True, which="both", axis="both", linestyle='--')
     ax.legend()
-    fig.suptitle("Speed vs Recommended", fontsize=12)
-    return fig
+    fig.suptitle(f"Speed vs Recommended ({timestep})", fontsize=12)
+    outfile = f"{figs_dir}/{timestep}_spd.png"
+    fig.savefig(outfile)
+    plt.close(fig)
+    return outfile
+
+def plot_and_save_distance_to_line(distance_series_m: np.ndarray, figs_dir: str, timestep):
+    d = np.asarray(distance_series_m, dtype=np.float32)
+    fig, ax = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
+    ax.plot(d, color='tab:green', linewidth=2, label='Distance to line')
+    ax.axhline(0.0, color='gray', linewidth=1, linestyle=':', label='Centerline')
+    ax.set_xlabel('Time step', fontsize=10)
+    ax.set_ylabel('Distance to line [m]', fontsize=10)
+    ax.grid(visible=True, which="both", axis="both", linestyle='--')
+    ax.legend()
+    fig.suptitle(f"Distance to Line ({timestep})", fontsize=12)
+    outfile = f"{figs_dir}/{timestep}_dist.png"
+    fig.savefig(outfile)
+    plt.close(fig)
+    return outfile
+
+def plot_and_save_speed_error(vx_series_mps: np.ndarray, rec_series_mps: np.ndarray, figs_dir: str, timestep, units: str = "kmh"):
+    """
+    Plot and save the speed error: (car.vx - recommended_speed) over time.
+    Positive means car is faster than recommended; negative means slower.
+    """
+    vx = np.asarray(vx_series_mps, dtype=np.float32)
+    rec = np.asarray(rec_series_mps, dtype=np.float32)
+    err = vx - rec  # m/s
+
+    if units.lower() in ["kmh", "km/h", "kph"]:
+        scale = 3.6
+        ylabel = "Speed error [km/h]"
+    else:
+        scale = 1.0
+        ylabel = "Speed error [m/s]"
+
+    err_plot = err * scale
+
+    fig, ax = plt.subplots(1, 1, sharex=False, sharey=False, gridspec_kw={"left":0.15, "right": 0.95, "top":0.92,"bottom":0.18})
+    ax.plot(err_plot, color='tab:purple', linewidth=2, label='Speed error (car - recommended)')
+    ax.axhline(0.0, color='gray', linewidth=1, linestyle=':', label='Zero error')
+    ax.set_xlabel('Time step', fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=10)
+    ax.grid(visible=True, which="both", axis="both", linestyle='--')
+    ax.legend()
+    fig.suptitle(f"Speed Error (vx - recommended) ({timestep})", fontsize=12)
+    outfile = f"{figs_dir}/{timestep}_spd_err.png"
+    fig.savefig(outfile)
+    plt.close(fig)
+    return outfile
 
 def ensure_dirs(paths):
     for path in paths:
