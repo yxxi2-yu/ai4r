@@ -188,19 +188,34 @@ class AutonomousDrivingEnv(gym.Env):
                 are included in the "info_dict".
                 This dictionary can contain the following keys:
                 (Flags for which sensor measurements to include in the observations)
-                - should_include_obs_for_ground_truth_state                    :  bool
-                - should_include_obs_for_vx_sensor                             :  bool
-                - should_include_obs_for_closest_distance_to_line              :  bool
-                - should_include_obs_for_heading_angle_relative_to_line        :  bool
-                - should_include_obs_for_heading_angle_gyro                    :  bool
-                - should_include_obs_for_accel_in_body_frame_x                 :  bool
-                - should_include_obs_for_accel_in_body_frame_y                 :  bool
-                - should_include_obs_for_look_ahead_line_coords_in_body_frame  :  bool
-                - should_include_obs_for_look_ahead_road_curvatures            :  bool
-                - should_include_obs_for_road_progress_at_closest_point        :  bool
-                - should_include_obs_for_road_curvature_at_closest_point       :  bool
-                - should_include_obs_for_gps_line_coords_in_world_frame        :  bool
-                - should_include_cone_detections                               :  bool
+                - should_include_ground_truth_px"                       :  "info",
+                - should_include_ground_truth_py"                       :  "info",
+                - should_include_ground_truth_theta"                    :  "info",
+                - should_include_ground_truth_vx"                       :  "info",
+                - should_include_ground_truth_vy"                       :  "info",
+                - should_include_ground_truth_omega"                    :  "info",
+                - should_include_ground_truth_delta"                    :  "info",
+                - should_include_road_progress_at_closest_point"        :  "info",
+                - should_include_vx_sensor"                             :  "obs",
+                - should_include_distance_to_closest_point"             :  "obs",
+                - should_include_heading_angle_relative_to_line"        :  "info",
+                - should_include_heading_angular_rate_gyro"             :  "info",
+                - should_include_accel_in_body_frame_x"                 :  "neither",
+                - should_include_accel_in_body_frame_y"                 :  "neither",
+                - should_include_closest_point_coords_in_body_frame"    :  "info",
+                - should_include_look_ahead_line_coords_in_body_frame"  :  "info",
+                - should_include_road_curvature_at_closest_point"       :  "info",
+                - should_include_look_ahead_road_curvatures"            :  "info",
+                - should_include_gps_line_coords_in_world_frame"        :  "neither",
+                - should_include_cone_detections"                       :  "neither",
+                # Speed observations at current progress
+                - should_include_speed_limit"                          :  "info",
+                - should_include_recommended_speed"                    :  "obs",
+                # Next speed change observations
+                - should_include_next_speed_limit"                     :  "info",
+                - should_include_distance_to_next_speed_limit"         :  "info",
+                - should_include_next_recommended_speed"               :  "info",
+                - should_include_distance_to_next_recommended_speed"   :  "info",
 
                 (Scaling value for each sensor measurement)
                 - scaling_for_ground_truth_state                    :  float
@@ -990,7 +1005,7 @@ class AutonomousDrivingEnv(gym.Env):
 
         if (self.should_include_obs_for_distance_to_next_recommended_speed):
             obs_dict["distance_to_next_recommended_speed"][0] = distance_to_next_recommended_speed
-        if (self.should_include_info_for_next_recommended_speed):
+        if (self.should_include_info_for_distance_to_next_recommended_speed):
             info_dict["distance_to_next_recommended_speed"][0] = distance_to_next_recommended_speed
 
         if (self.should_include_obs_for_look_ahead_road_curvatures):
