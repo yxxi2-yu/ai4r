@@ -1,3 +1,13 @@
+"""
+This is just a demo python script to demonstrate how you can run training
+in a script without relying on a notebook. 
+
+This script needs to be run from the root directory of the project.
+
+This script has not been verified. If you run into an unexpected error, 
+refer to the notebooks for all details.
+"""
+
 import ai4rgym
 import gymnasium as gym
 import numpy as np
@@ -5,6 +15,7 @@ import numpy as np
 from stable_baselines3 import PPO, SAC, DDPG
 
 from utils import ensure_dirs, eval_model
+from ai4rgym.envs.road import Road
 
 # -------------------------- ENVIRONMENT SETTINGS ---------------------------- #
 
@@ -138,68 +149,148 @@ observation_parameters = {
     "look_ahead_line_coords_in_body_frame_num_points"  :  10,
 }
 
-# SPECIFY THE TERMINATION PARAMETERS
+# SPECIFY THE TERMINATION PARAMETERS (updated interface names)
 termination_parameters = {
     "speed_lower_bound"  :  0.0,
     "speed_upper_bound"  :  (200.0/3.6),
     "distance_to_closest_point_upper_bound"  :  20.0,
-    "reward_speed_lower_bound"  :  0.0,
-    "reward_speed_upper_bound"  :  0.0,
-    "reward_distance_to_closest_point_upper_bound"  :  0.0,
+    # Updated keys with "reward_for_*" to match env API
+    "reward_for_speed_lower_bound"  :  0.0,
+    "reward_for_speed_upper_bound"  :  0.0,
+    "reward_for_distance_to_closest_point_upper_bound"  :  0.0,
+}
+
+# INTERNAL POLICY CONFIG
+internal_policy_config = {
+    "enable_lane_keep": False,
+    "enable_cruise_control": False,
+    "action_interface": "full",
 }
 
 
-# -------------------------- ENVIRONMENT DEFINITION -------------------------- #
+# --------------------------- COMBINED REWARD -------------------------------- #
 
-env = gym.make(
-    "ai4rgym/autonomous_driving_env",
-    render_mode=None,
-    bicycle_model_parameters=bicycle_model_parameters,
-    road_elements_list=road_elements_list,
-    numerical_integration_parameters=numerical_integration_parameters,
-    termination_parameters=termination_parameters,
-    initial_state_bounds=initial_state_bounds,
-    observation_parameters=observation_parameters,
-)
-
-# > Time increment per simulation step (units: seconds)
-Ts_sim = 0.05
-
-# Specify the integration method to simulate
-integration_method = "rk4"
-
-# Set the integration method and Ts of the gymnasium
-env.unwrapped.set_integration_method(integration_method)
-env.unwrapped.set_integration_Ts(Ts_sim)
-# Set the road condition
-env.unwrapped.set_road_condition(road_condition="wet")
-
-env = gym.wrappers.RescaleAction(env, min_action=-1, max_action=1)
-
-# --------------------------- REWARD WRAPPER --------------------------------- #
-
-class RewardWrapper(gym.Wrapper):
-    def __init__(self, env):
-        super(RewardWrapper, self).__init__(env)
+class CombinedRewardWrapper(gym.Wrapper):
+    """
+    Reward combining lane keeping (distance to center) and cruise control
+    (target speed with heading gating). Ported from notebook defaults.
+    """
+    def __init__(self, env,
+                 k_distance: float = 1.0,
+                 k_speed: float = 1.0,
+                 target_speed_mps: float = 60.0/3.6,
+                 use_recommended: bool = False):
+        super().__init__(env)
+        self.k_distance = float(k_distance)
+        self.k_speed = float(k_speed)
+        self.target_speed_mps = float(target_speed_mps)
+        self.use_recommended = bool(use_recommended)
 
     def step(self, action):
-        observation, reward, terminated, truncated, info = self.env.step(action)
+        obs, base_r, terminated, truncated, info = self.env.step(action)
+        gt = self.env.unwrapped.get_current_ground_truth()
+        v = float(self.env.unwrapped.car.vx)
+        d = float(abs(gt["distance_to_closest_point"]))
+        v_rec = float(gt.get("recommended_speed_at_closest_point", 0.0))
+        theta = float(gt.get("heading_angle_relative_to_line", 0.0))
 
-        # Create your own reward here
-        reward = reward
+        r_lane = self.k_distance * (1.0 / (1.0 + d))
+        v_tgt = v_rec if (self.use_recommended and v_rec > 0.0) else self.target_speed_mps
+        gate = max(0.0, np.cos(theta))
+        r_speed = self.k_speed * (1.0 / (1.0 + abs(v - v_tgt)))
+        r = r_lane + gate * r_speed
 
-        return observation, reward, terminated, truncated, info
+        info = dict(info,
+                    lane_distance=d,
+                    r_lane=r_lane,
+                    heading_rel_line=theta,
+                    heading_gate=gate,
+                    r_speed=r_speed,
+                    v=v,
+                    v_tgt=v_tgt)
+        return obs, r, terminated, truncated, info
 
-env = RewardWrapper(env)
+
+# ------------------- DOMAIN RANDOMIZATION WRAPPER --------------------------- #
+
+class DomainRandomizationWrapper(gym.Wrapper):
+    def __init__(self, env, road_randomization_params=None):
+        super(DomainRandomizationWrapper, self).__init__(env)
+        self.road_randomization_params = road_randomization_params or {}
+
+    def generate_random_road_elements_list(self):
+        params = self.road_randomization_params
+        num_elements_range = params.get('num_elements_range', (2, 5))
+        straight_length_range = params.get('straight_length_range', (50.0, 200.0))
+        curvature_range = params.get('curvature_range', (-1/500.0, 1/500.0))
+        angle_range = params.get('angle_range', (10.0, 60.0))
+
+        import random
+        road_elements = []
+        num_elements = random.randint(*num_elements_range)
+        for _ in range(num_elements):
+            element_type = random.choice(['straight', 'curved'])
+            if element_type == 'straight':
+                length = random.uniform(*straight_length_range)
+                road_elements.append({"type": "straight", "length": length})
+            else:
+                curvature = random.uniform(*curvature_range)
+                angle = random.uniform(*angle_range)
+                road_elements.append({
+                    "type": "curved",
+                    "curvature": curvature,
+                    "angle_in_degrees": angle
+                })
+        return road_elements
+
+    def reset(self, **kwargs):
+        # Generate a new random road each reset
+        self.unwrapped.road_elements_list = self.generate_random_road_elements_list()
+        self.unwrapped.road = Road(epsilon_c=(1/10000), road_elements_list=self.unwrapped.road_elements_list)
+        self.unwrapped.total_road_length = self.unwrapped.road.get_total_length()
+        self.unwrapped.total_road_length_for_termination = max(
+            self.unwrapped.total_road_length - 0.1,
+            0.9999 * self.unwrapped.total_road_length,
+        )
+        return self.env.reset(**kwargs)
+
+
+# --------------------------- ENV FACTORY ----------------------------------- #
+
+def create_env(road_elements_list):
+    env = gym.make(
+        "ai4rgym/autonomous_driving_env",
+        render_mode=None,
+        bicycle_model_parameters=bicycle_model_parameters,
+        road_elements_list=road_elements_list,
+        numerical_integration_parameters=numerical_integration_parameters,
+        termination_parameters=termination_parameters,
+        initial_state_bounds=initial_state_bounds,
+        observation_parameters=observation_parameters,
+        internal_policy_config=internal_policy_config,
+    )
+    # Integration and surface defaults
+    env.unwrapped.set_integration_method("rk4")
+    env.unwrapped.set_integration_Ts(0.05)
+    env.unwrapped.set_road_condition(road_condition="wet")
+    # Wrap with action scaling and reward shaping
+    env = gym.wrappers.RescaleAction(env, min_action=-1, max_action=1)
+    return env
+
+# Create training env with domain randomization
+road_randomization_params = None  # Use None for default params
+env = create_env(road_elements_list)
+env = DomainRandomizationWrapper(env, road_randomization_params=road_randomization_params)
+env = CombinedRewardWrapper(env, use_recommended=True)
 
 # --------------------- MODEL DEFINITION & SETUP ----------------------------- #
 
 from stable_baselines3 import PPO, SAC, DDPG
 
-model_name = "PPO_test"
+model_name = "PPO"
 
 TIMESTEPS_PER_EPOCH = 50000
-EPOCHS = 10
+EPOCHS = 20
 
 logdir = "logs"
 models_dir = f"models/{model_name}"

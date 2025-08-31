@@ -127,7 +127,7 @@ Check that the dependencies were correctly installed by looking at:
 pip list
 ```
 
-This will display a much longer list now because the ai4r-gym dependencies themselves have multiple dependencies. On the list you should at least identify:
+This will display a much longer list now because the ai4r-gym dependencies themselves have multiple dependencies. On the list you should at least identify (the version numbers may vary, but that is not an issue):
 ```
 Package              Version
 -------------------- -------

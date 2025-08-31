@@ -1,5 +1,7 @@
 # CustomRewardWrapper Documentation
 
+> Note: This is a previous version of the docs and may not reflect some of the most recent changes.
+
 The `CustomRewardWrapper` class reconstructs the original reward shaping used by the autonomous driving environment outside of the base environment implementation. This allows reward logic to be configured, swapped, or tested independently from the environment dynamics.
 
 ## Key Behavior
