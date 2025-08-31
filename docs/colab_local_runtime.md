@@ -1,84 +1,105 @@
-# Google Colab ↔ Local Runtime (Conda + Classic Jupyter) — Setup Guide (macOS/Linux)
+# Google Colab ↔ Local Runtime — Setup Guide (macOS/Windows/Linux)
 
-This is a **battle‑tested path** to run Google Colab notebooks on **your local Conda environment**. It reflects what actually worked: using the **classic Jupyter Notebook 6.x** + **Jupyter Server 1.x** with the \`\` bridge, and avoiding newer Server‑2‑only extensions that break validation.
+This guide shows how to run a Colab notebook against your local machine so that code executes on your own CPU/GPU and uses your local files and Python environment. For this project, many RL training steps (policy updates, environment stepping, logging) are CPU‑bound. Running them locally typically reduces latency and speeds up training compared to Colab’s remote backend.
+
+This document works with both installation methods used in this repo:
+
+- Using Anaconda/conda (see docs/installation_anaconda.md)
+- Using Python venv + pip (see docs/installation.md)
+
+Under the hood, Colab connects via a small bridge package to a local Jupyter Notebook server. That bridge currently targets the classic Jupyter stack, so we pin to Notebook 6.x and Jupyter Server 1.x below.
 
 ---
 
-## TL;DR (Copy‑paste, no prompts)
+## TL;DR (Local Runtime)
+
+Pick one path that matches how you installed Python. These commands need to be run from the repository root.
+
+### Option A — With Anaconda (conda)
 
 ```bash
-# 0) Activate your conda env
+# 0) Create/activate env (if not already)
+# conda create -n gym python=3.10 -y
 conda activate gym
 
-# 1) Install classic stack compatible with the Colab bridge
+# 1) Install classic Jupyter compatible with Colab bridge
 conda install -y -c conda-forge "notebook<7" "jupyter_server<2" ipykernel
-python -m pip install --no-cache-dir -U jupyter_http_over_ws
+python -m pip install -U jupyter_http_over_ws
 
 # 2) Enable the bridge
 python -m jupyter server extension enable --py jupyter_http_over_ws
 
-# 3) Launch classic Notebook (keep this running)
+# 3) Launch classic Notebook (keep this terminal open)
 python -m jupyter notebook \
   --NotebookApp.allow_origin='https://colab.research.google.com' \
   --NotebookApp.allow_credentials=True \
   --port=8888 --NotebookApp.port_retries=0
 ```
 
-In Colab, click the **Connect** dropdown (top‑right) → **Connect to local runtime…** → enter `http://localhost:8888/` (or include the `?token=...` URL shown in your terminal if prompted).
-
----
-
-## Why this specific setup?
-
-- The Colab bridge package \`\` currently expects **classic Notebook APIs** (e.g., `notebook.base`). Those were removed/relocated in **Notebook 7 / Jupyter Server 2**, so you’ll see errors like `ModuleNotFoundError: No module named 'notebook.base'` if you use the modern stack.
-- Therefore, we pin to `and`. This combination works reliably with the bridge.
-- Some extensions (e.g., \`\`) **require Server 2.0+** and will crash validation on Server 1.x. Uninstall or disable them for this workflow.
-
----
-
-## Full Setup (step‑by‑step)
-
-### 1) Create/activate a Conda environment
+### Option B — Without Anaconda (python venv + pip)
 
 ```bash
-conda create -n gym python=3.10 -y
-conda activate gym
+# 0) Create/activate venv (adjust path/name as you like)
+# python -m venv venv_for_ai4rgym
+source venv_for_ai4rgym/bin/activate   # Windows PowerShell: .\venv_for_ai4rgym\Scripts\Activate.ps1
+
+# 1) Install classic Jupyter compatible with Colab bridge
+python -m pip install --upgrade pip setuptools
+python -m pip install "notebook<7" "jupyter_server<2" ipykernel jupyter_http_over_ws
+
+# 2) Enable the bridge
+python -m jupyter server extension enable --py jupyter_http_over_ws
+
+# 3) Launch classic Notebook (keep this terminal open)
+python -m jupyter notebook \
+  --NotebookApp.allow_origin='https://colab.research.google.com' \
+  --NotebookApp.allow_credentials=True \
+  --port=8888 --NotebookApp.port_retries=0
 ```
 
-(Use your existing env if you already have one.)
+In Colab, click the Connect dropdown (top‑right) → “Connect to local runtime…” → enter `http://localhost:8888/` (or paste the full tokenized URL printed in your terminal).
 
-### 2) Install compatible Jupyter stack and the Colab bridge
+---
 
+## Step‑by‑Step
+
+You can follow the detailed installation first, then return here to connect from Colab.
+
+### 1) Install this repo and dependencies
+
+- With Anaconda (**Recommended**): follow docs/installation_anaconda.md
+- Without Anaconda: follow docs/installation.md
+
+The following commands are expected to be run from the ai4r-gym directory root.
+
+First ensure you can run `python -c "import ai4rgym; print('ok')"` in your environment.
+
+### 2) Install the Colab bridge and classic Jupyter
+
+Conda users:
 ```bash
 conda install -y -c conda-forge "notebook<7" "jupyter_server<2" ipykernel
-python -m pip install --no-cache-dir -U jupyter_http_over_ws
+python -m pip install -U jupyter_http_over_ws
 ```
 
-### 3) Verify the bridge is importable (optional but reassuring)
-
+Venv + pip users:
 ```bash
-python - <<'PY'
-import sys, pkgutil, jupyter_http_over_ws as m
-print("py:", sys.executable)
-print("module found?", pkgutil.find_loader('jupyter_http_over_ws') is not None)
-print("module path:", m.__file__)
-PY
+python -m pip install --upgrade pip setuptools
+python -m pip install "notebook<7" "jupyter_server<2" ipykernel jupyter_http_over_ws
 ```
 
-You should see the module path under your conda env.
+Why classic? The `jupyter_http_over_ws` bridge expects classic Notebook APIs (e.g. `notebook.base`) that moved in Notebook 7/Jupyter Server 2.
 
-### 4) Enable the server extension (use the env’s Python)
+### 3) Enable the server extension
 
 ```bash
 python -m jupyter server extension enable --py jupyter_http_over_ws
 python -m jupyter server extension list
 ```
 
-`jupyter_http_over_ws` should show **enabled**.
+You should see `jupyter_http_over_ws` listed as enabled.
 
-> If the list command crashes on an unrelated extension, see **Troubleshooting** below.
-
-### 5) Launch **classic Notebook** with Colab‑friendly flags
+### 4) Launch Jupyter with Colab‑friendly flags
 
 ```bash
 python -m jupyter notebook \
@@ -87,147 +108,100 @@ python -m jupyter notebook \
   --port=8888 --NotebookApp.port_retries=0
 ```
 
-- Keep this terminal open.
-- If a token is printed, you can paste the full URL (including `?token=...`) into Colab’s dialog.
+Keep this terminal open. If a `?token=...` appears, paste that entire URL into Colab’s dialog.
 
-### 6) Connect from Google Colab
+### 5) Connect from Colab
 
-- Open any Colab notebook.
-- Click the drop-down button beside the **Connect** button (top‑right) → **Connect to local runtime…**.
-- Enter `http://localhost:8888/` (or paste the full tokenized URL from your terminal).
+- Open a Colab notebook.
+- Connect dropdown → “Connect to local runtime…”.
+- Enter `http://localhost:8888/` (or paste the full `http://127.0.0.1:8888/?token=...`).
 
-> **Tip:** If you don’t see the option, reload the page or try Chrome. The option may be under **Runtime → Change runtime type** in some UIs.
-
----
-
-## Optional: expose the env as a named kernel
-
-This lets you switch kernels cleanly inside Notebook/Lab.
-
+Optional: expose your env as a named kernel so it’s selectable inside Notebook/Lab:
 ```bash
 python -m ipykernel install --user --name gym --display-name "Python (gym)"
 ```
 
 ---
 
-## Troubleshooting (real errors we hit & fixes)
+## Notes on Performance
 
-### A) `ModuleNotFoundError: No module named 'notebook.base'`
+- Much of the RL training loop (policy updates, environment stepping) is CPU‑bound; local runtimes avoid network round‑trips and improve iteration speed.
 
-**Cause:** You’re on **Notebook 7 / Server 2**, but the bridge expects classic Notebook 6.x. **Fix:**
+---
 
+## Platform Notes
+
+This approach has been tested on macOS. The same approach applies on Linux and Windows with minor command/quoting differences:
+
+- Windows PowerShell: activate venv with `.<path>\Scripts\Activate.ps1` and prefer double quotes for arguments, e.g.
+  ```powershell
+  python -m jupyter notebook \
+    --NotebookApp.allow_origin="https://colab.research.google.com" \
+    --NotebookApp.allow_credentials=True \
+    --port=8888 --NotebookApp.port_retries=0
+  ```
+- Windows CMD: activate venv with `<path>\Scripts\activate.bat` and run the same `python -m jupyter notebook ...` line.
+- Linux: commands match macOS; ensure firewall allows local ports when prompted.
+- WSL: prefer launching the browser from Windows; still use `http://127.0.0.1:8888/` in Colab.
+
+---
+
+## Troubleshooting
+
+### A) ModuleNotFoundError: No module named 'notebook.base'
+You are on Notebook 7 / Server 2. Pin to classic:
 ```bash
-conda install -y -c conda-forge "notebook<7" "jupyter_server<2"
+conda install -y -c conda-forge "notebook<7" "jupyter_server<2"  # conda
+# or
+python -m pip install "notebook<7" "jupyter_server<2"            # venv/pip
 ```
 
-### B) `Jupyter Server Terminals requires Jupyter Server 2.0+`
-
-**Cause:** `jupyter_server_terminals` is installed but you’re on Server 1.x. The *extension manager* dies while validating it. **Fix (remove the landmine):**
-
+### B) “Jupyter Server Terminals requires Jupyter Server 2.0+”
+An extension for Server 2 is present. Remove it and re‑enable the bridge:
 ```bash
 python -m pip uninstall -y jupyter_server_terminals
-rm -f $(python - <<'PY'
-from jupyter_core.paths import jupyter_config_path
-import os
-for p in jupyter_config_path():
-    d=os.path.join(p,'jupyter_server_config.d')
-    if os.path.isdir(d):
-        f=os.path.join(d,'jupyter_server_terminals.json')
-        print(f)
-PY)
-```
-
-Re‑run the enable/list steps for the bridge.
-
-### C) `jupyter command 'jupyter-serverextension' not found`
-
-**Cause:** Old one‑word subcommand. **Fix:** Use the new form: `jupyter server extension ...` (we always call it via `python -m jupyter ...`).
-
-### D) “Validation failed: The module … could not be found”
-
-**Cause:** The package isn’t installed in the **same env** that `jupyter` is using. **Fix:** Always use the env’s Python:
-
-```bash
-which python; which pip
-python -m pip install -U jupyter_http_over_ws
 python -m jupyter server extension enable --py jupyter_http_over_ws
 ```
 
-### E) Colab can’t connect / CORS issues
-
-**Fix:** Ensure you launched with both flags:
-
+### C) Colab can’t connect / CORS
+Ensure both flags are present when launching Notebook:
 ```bash
 --NotebookApp.allow_origin='https://colab.research.google.com' \
 --NotebookApp.allow_credentials=True
 ```
+Try a different port (e.g. `--port=8890`) and use that in Colab.
 
-Try another port if 8888 is busy: `--port=8890` and use that in Colab.
+### D) “Validation failed: The module … could not be found”
+Make sure you installed the bridge in the same env that runs `jupyter` and call commands via `python -m ...` from that env.
 
-### F) Missing “Connect to local runtime” UI
-
-- Refresh the page; try **Chrome**.
-- Look under **Connect** dropdown (top‑right). In some UIs it’s under **Runtime → Change runtime type**.
-- Firefox users may need `about:config` → set `network.websocket.allowInsecureFromHTTPS=true`.
-
-### G) macOS firewall prompt
-
-Click **Allow** when you first launch the server.
-
-### H) Shell parse weirdness when copy‑pasting
-
-Avoid pasting prompts like `(gym) …` and keep commands as plain lines. If using comments, put them on their own lines.
-
-### I) Extension list still crashes on Server‑2‑only add‑ons
-
-Temporarily remove modern add‑ons you don’t need for Colab:
-
-```bash
-python -m pip uninstall -y jupyter_server_ydoc jupyter_server_fileid jupyterlab
-```
-
-(You can reinstall later.)
+### E) Missing “Connect to local runtime” UI
+Refresh the page; try Chrome. In some UIs it appears under Runtime → Change runtime type.
 
 ---
 
-## Useful diagnostics
+## Useful Diagnostics
 
 ```bash
-# Show which Python/pip you’re using
+# Show interpreter and pip
 which python; which pip; python -V; pip -V
 
-# Check versions
+# Check versions of classic stack
 python -c "import notebook, jupyter_server; print('notebook', notebook.__version__); print('server', jupyter_server.__version__)"
 
-# See config search paths
-python - <<'PY'
-from jupyter_core.paths import jupyter_config_path
-print("Jupyter config paths (highest priority first):")
-for p in jupyter_config_path():
-    print(" -", p)
-PY
-
-# List server extensions (after cleaning up incompatible ones)
+# List server extensions
 python -m jupyter server extension list
 ```
 
 ---
 
-## Security notes
+## Security Notes
 
-- The `--allow_origin` flag tightly scopes cross‑origin access to **Colab only**.
-- Consider keeping the default token auth; only set `--NotebookApp.token=''` on **trusted, local** setups.
-- Keep the server bound to localhost; do not expose it publicly.
-
----
-
-## Appendix: Why classic Notebook (6.x) instead of 7?
-
-`jupyter_http_over_ws` integrates with the classic Notebook’s Tornado handlers (e.g., `notebook.base`). Notebook 7 is rebuilt atop **Jupyter Server 2** with different module layout; until the bridge is updated, **Notebook 6.x + Server 1.x** is the stable route for Colab local runtimes.
+- The `--allow_origin` flag scopes cross‑origin access to Colab only.
+- Keep the default token; only set `--NotebookApp.token=''` on trusted local machines.
+- Bind to localhost; do not expose publicly.
 
 ---
 
-### Done ✨
+### Done
 
-Once connected, Colab uses your local Conda env (packages, GPU, files) while keeping the familiar Colab UI.
-
+Once connected, Colab runs against your local environment (packages, CPU/GPU, files) while keeping the familiar Colab UI.
