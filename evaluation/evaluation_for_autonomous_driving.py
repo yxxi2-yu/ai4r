@@ -192,8 +192,8 @@ def simulate_policy(env, N_sim, policy, seed=None, should_save_look_ahead_result
         "terminated"  :  sim_terminated,
         "truncated"   :  sim_truncated,
 
-        "time_in_seconds"  :  time_index_sim,
-        "time_index"       :  time_in_seconds_sim,
+        "time_in_seconds"  :  time_in_seconds_sim,
+        "time_index"       :  time_index_sim,
 
         "reward"  : reward_sim,
 

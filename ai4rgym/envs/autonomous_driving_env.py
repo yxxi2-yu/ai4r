@@ -197,6 +197,7 @@ class AutonomousDrivingEnv(gym.Env):
                 - should_include_ground_truth_delta"                    :  "info",
                 - should_include_road_progress_at_closest_point"        :  "info",
                 - should_include_vx_sensor"                             :  "obs",
+                - should_include_steering_angle_sensor"                 :  "info",
                 - should_include_distance_to_closest_point"             :  "obs",
                 - should_include_heading_angle_relative_to_line"        :  "info",
                 - should_include_heading_angular_rate_gyro"             :  "info",
@@ -220,6 +221,7 @@ class AutonomousDrivingEnv(gym.Env):
                 (Scaling value for each sensor measurement)
                 - scaling_for_ground_truth_state                    :  float
                 - scaling_for_vx_sensor                             :  float
+                - scaling_for_steering_angle_sensor                 :  float
                 - scaling_for_closest_distance_to_line              :  float
                 - scaling_for_heading_angle_relative_to_line        :  float
                 - scaling_for_heading_angle_gyro                    :  float
@@ -234,6 +236,19 @@ class AutonomousDrivingEnv(gym.Env):
                 (Specifications for each sensor measurement)
                 - vx_sensor_bias   : float
                 - vx_sensor_stddev : float
+
+                - steering_angle_sensor_bias       : float
+                - steering_angle_sensor_stddev     : float
+                - steering_angle_sensor_resolution : float
+                    Resolution (quantisation step) for the steering angle encoder.
+                    Apply noise in this order for the delta sensor:
+                    1) Add zero-mean Gaussian noise (stddev models vibration),
+                    2) Quantise to the nearest multiple of `resolution`,
+                    3) Add bias (systematic offset).
+                    A practical continuity threshold is used: if
+                    `resolution <= 7.6e-4`, then treat as continuous (i.e., no quantisation applied)
+                    This threshold is approximately finer than 1/8192 increment per 2pi revoluation,
+                    which is approximately 22 increments per degree.
 
                 - closest_distance_to_line_bias    :  float
                 - closest_distance_to_line_stddev  :  float
@@ -403,6 +418,7 @@ class AutonomousDrivingEnv(gym.Env):
         # > Scaling value for each sensor measurement
         # > Specifications for each sensor measurement
         observation_parameters_defaults = {
+            # Ground truths
             "should_include_ground_truth_px"                       :  "info",
             "should_include_ground_truth_py"                       :  "info",
             "should_include_ground_truth_theta"                    :  "info",
@@ -410,18 +426,25 @@ class AutonomousDrivingEnv(gym.Env):
             "should_include_ground_truth_vy"                       :  "info",
             "should_include_ground_truth_omega"                    :  "info",
             "should_include_ground_truth_delta"                    :  "info",
+            # "Main" observations
             "should_include_road_progress_at_closest_point"        :  "info",
             "should_include_vx_sensor"                             :  "obs",
+            "should_include_steering_angle_sensor"                 :  "info",
             "should_include_distance_to_closest_point"             :  "obs",
             "should_include_heading_angle_relative_to_line"        :  "info",
+            # IMU observations
             "should_include_heading_angular_rate_gyro"             :  "info",
             "should_include_accel_in_body_frame_x"                 :  "neither",
             "should_include_accel_in_body_frame_y"                 :  "neither",
+            # Road in body frame observations
             "should_include_closest_point_coords_in_body_frame"    :  "info",
             "should_include_look_ahead_line_coords_in_body_frame"  :  "info",
+            # Road curvature observations
             "should_include_road_curvature_at_closest_point"       :  "info",
             "should_include_look_ahead_road_curvatures"            :  "info",
+            # GPS observations
             "should_include_gps_line_coords_in_world_frame"        :  "neither",
+            # Cone detection observations
             "should_include_cone_detections"                       :  "neither",
             # Speed observations at current progress
             "should_include_speed_limit"                           :  "info",
@@ -441,6 +464,7 @@ class AutonomousDrivingEnv(gym.Env):
             "scaling_for_ground_truth_delta"                    :  1.0,
             "scaling_for_road_progress_at_closest_point"        :  1.0,
             "scaling_for_vx_sensor"                             :  1.0,
+            "scaling_for_steering_angle_sensor"                 :  1.0,
             "scaling_for_distance_to_closest_point"             :  1.0,
             "scaling_for_heading_angle_relative_to_line"        :  1.0,
             "scaling_for_heading_angular_rate_gyro"             :  1.0,
@@ -463,6 +487,10 @@ class AutonomousDrivingEnv(gym.Env):
 
             "vx_sensor_bias"   : 0.0,
             "vx_sensor_stddev" : 0.0, #0.1
+
+            "steering_angle_sensor_bias"       : 0.0,
+            "steering_angle_sensor_stddev"     : 0.0,
+            "steering_angle_sensor_resolution" : 0.0,
 
             "distance_to_closest_point_bias"    :  0.0,
             "distance_to_closest_point_stddev"  :  0.00, #0.01
@@ -524,6 +552,7 @@ class AutonomousDrivingEnv(gym.Env):
             ["ground_truth_delta"                   , -0.5*np.pi , 0.5*np.pi , (1,) ],
             ["road_progress_at_closest_point"       , -np.inf    , np.inf    , (1,) ],
             ["vx_sensor"                            , -np.inf    , np.inf    , (1,) ],
+            ["steering_angle_sensor"                , -0.5*np.pi , 0.5*np.pi , (1,) ],
             ["distance_to_closest_point"            , -np.inf    , np.inf    , (1,) ],
             ["heading_angle_relative_to_line"       , -np.pi     , np.pi     , (1,) ],
             ["heading_angular_rate_gyro"            , -np.inf    , np.inf    , (1,) ],
@@ -801,6 +830,18 @@ class AutonomousDrivingEnv(gym.Env):
         vx_noise = np.random.normal(self.vx_sensor_bias, self.vx_sensor_stddev)
         vx_sensor = (self.car.vx + vx_noise) * self.scaling_for_vx_sensor
 
+        # Steering encoder-based sensor for steering angle (delta)
+        # Steps for adding noise:
+        # 1) Add zero-mean Gaussian noise (vibrations),
+        # 2) Quantise according to resolution (if above continuity threshold),
+        # 3) Add bias.
+        _delta_meas_noisy = self.car.delta + np.random.normal(0.0, self.steering_angle_sensor_stddev)
+        _delta_res = self.steering_angle_sensor_resolution
+        if _delta_res > 7.6e-4:
+            # Quantise to nearest multiple of resolution
+            _delta_meas_noisy = np.round(_delta_meas_noisy / _delta_res) * _delta_res
+        steering_angle_sensor = (_delta_meas_noisy + self.steering_angle_sensor_bias) * self.scaling_for_steering_angle_sensor
+
         dist_to_line_noise = np.random.normal(self.distance_to_closest_point_bias, self.distance_to_closest_point_stddev)
         dist_to_line = (road_info_dict["closest_distance"] * road_info_dict["side_of_the_road_line"] + dist_to_line_noise) * self.scaling_for_distance_to_closest_point
 
@@ -932,6 +973,11 @@ class AutonomousDrivingEnv(gym.Env):
             obs_dict["vx_sensor"][0]  = vx_sensor
         if (self.should_include_info_for_vx_sensor):
             info_dict["vx_sensor"][0] = vx_sensor
+
+        if (self.should_include_obs_for_steering_angle_sensor):
+            obs_dict["steering_angle_sensor"][0]  = steering_angle_sensor
+        if (self.should_include_info_for_steering_angle_sensor):
+            info_dict["steering_angle_sensor"][0] = steering_angle_sensor
 
         if (self.should_include_obs_for_distance_to_closest_point):
             obs_dict["distance_to_closest_point"][0]  = dist_to_line
