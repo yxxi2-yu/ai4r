@@ -513,7 +513,7 @@ class AutonomousDrivingEnv(gym.Env):
             "look_ahead_road_curvatures_bias"    :  0.0,
             "look_ahead_road_curvatures_stddev"  :  0.0,
 
-            "look_ahead_line_coords_in_body_frame_distance"             :  100.0,
+            "look_ahead_line_coords_in_body_frame_distance"             :  0.1,
             "look_ahead_line_coords_in_body_frame_num_points"           :  10,
             "look_ahead_line_coords_in_body_frame_stddev_lateral"       :  0.0,
             "look_ahead_line_coords_in_body_frame_stddev_longitudinal"  :  0.0,
